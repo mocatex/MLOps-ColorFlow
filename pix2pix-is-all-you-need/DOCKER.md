@@ -12,12 +12,12 @@ docker compose build
 docker compose up -d
 ```
 
-If the docker build fails, in `env.yml` change/add the following line:
+If the docker build fails, in `requirements.txt` change/add the following line:
 
 ```yml
-- --extra-index-url https://download.pytorch.org/whl/cpu
-- torch==2.6.0+cpu 
-- torchvision==0.24.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.0+cpu 
+torchvision==0.24.0+cpu
 ```
 
 `torch==2.6.0` is pulling CUDA-enabled NVIDIA wheels by default, which are huge (~100–500 MB each) and sometimes can cause timeout or fail in Docker builds. The `+cpu` suffix pulls the CPU-only version, which is much smaller (~50 MB) and faster to install. The `--extra-index-url` is needed to find the CPU wheels.
