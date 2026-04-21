@@ -49,42 +49,9 @@ cd pix2pix-is-all-you-need/mlops-coco
 dvc pull
 ```
 
-Now you should be good to go!
+Now you should be good to go! Everything else down below is just kept for reference. 
 
 <br>
-
-# DVC
-
-## Setup DVC and link to GCS
-
-```bash
-# Change to the dataset directory
-cd pix2pix-is-all-you-need/mlops-coco
-# Initialize DVC in a subdirectory
-dvc init --subdir 
-# Track one data directory
-dvc add images
-
-# Authenticate for GCS access
-gcloud auth login
-# Allow local tools (for example DVC) to use your Google credentials
-gcloud auth application-default login
-# Set the default project for application-default credentials
-gcloud auth application-default set-quota-project mlops-colorflow
-
-# Add your GCS bucket as default DVC remote
-dvc remote add -d storage gs://mlops-coco
-# Pin the GCP project for this remote
-dvc remote modify storage projectname mlops-colorflow
-
-# Commit DVC metadata to Git
-git add .
-git commit -m "track images with DVC"
-git push
-
-# Upload tracked data to GCS
-dvc push
-```
 
 # Google Cloud Storage
 
@@ -123,8 +90,6 @@ gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
 
 ## Upload to GCS
 
-Not needed because we use DVC, just kept for reference.
-
 ```bash
 # First login with your Google account
 gcloud auth login
@@ -146,8 +111,6 @@ gcloud storage rsync --recursive --exclude="(^|/)\\.DS_Store$" . gs://mlops-coco
 
 ## Download from GCS
 
-Not needed because we use DVC, just kept for reference.
-
 ```bash
 # First login with your Google account
 gcloud auth login 
@@ -159,6 +122,43 @@ gcloud storage ls gs://mlops-coco
 mkdir -p ./mlops-coco
 gcloud storage rsync --recursive gs://mlops-coco ./mlops-coco
 ```
+
+<br>
+
+# DVC
+
+## Setup DVC and link to GCS
+
+```bash
+# Change to the dataset directory
+cd pix2pix-is-all-you-need/mlops-coco
+# Initialize DVC in a subdirectory
+dvc init --subdir 
+# Track one data directory
+dvc add images
+
+# Authenticate for GCS access
+gcloud auth login
+# Allow local tools (for example DVC) to use your Google credentials
+gcloud auth application-default login
+# Set the default project for application-default credentials
+gcloud auth application-default set-quota-project mlops-colorflow
+
+# Add your GCS bucket as default DVC remote
+dvc remote add -d storage gs://mlops-coco
+# Pin the GCP project for this remote
+dvc remote modify storage projectname mlops-colorflow
+
+# Commit DVC metadata to Git
+git add .
+git commit -m "track images with DVC"
+git push
+
+# Upload tracked data to GCS
+dvc push
+```
+
+<br>
 
 # Oxen
 
