@@ -3,6 +3,13 @@ name = "mlops-colorflow"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "datasets==4.0.0",
     "diagrams>=0.25.1",
+    "dvc[gs]>=3.67.1",
+    "matplotlib==3.10.0",
+    "scikit-image==0.26.0",
+    "setuptools==69.5.1",
+    "tensorboard==2.20.0",
+    "tensorboard-data-server==0.7.2",
     "pillow>=10.0.0",
 ]
