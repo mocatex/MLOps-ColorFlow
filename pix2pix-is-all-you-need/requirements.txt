@@ -8,3 +8,4 @@ torchdata==0.11.0
 setuptools==69.5.1
 fastai==2.8.7
 scikit-image==0.26.0
+dvc[gs]==3.67.1
