@@ -4,29 +4,41 @@ We use [GCS](https://cloud.google.com/) for storage and [DVC](https://dvc.org/) 
 
 # DVC
 
+## Download data with DVC
+
+```bash
+# Authenticate for GCS access (needed for private bucket)
+gcloud auth login
+# Allow local tools (for example DVC) to use your Google credentials
+gcloud auth application-default login
+# Set the default project for application-default credentials
+gcloud auth application-default set-quota-project mlops-colorflow
+
+# Change to the dataset directory
+cd pix2pix-is-all-you-need/mlops-coco
+# Pull data from DVC remote (GCS)
+dvc pull
+```
+
 ## Setup DVC and link to GCS
 
 ```bash
-cd mlops-coco
-
+# Change to the dataset directory
+cd pix2pix-is-all-you-need/mlops-coco
 # Initialize DVC in a subdirectory
 dvc init --subdir 
-
 # Track one data directory
 dvc add images
 
 # Authenticate for GCS access
 gcloud auth login
-
 # Allow local tools (for example DVC) to use your Google credentials
 gcloud auth application-default login
-
 # Set the default project for application-default credentials
 gcloud auth application-default set-quota-project mlops-colorflow
 
 # Add your GCS bucket as default DVC remote
 dvc remote add -d storage gs://mlops-coco
-
 # Pin the GCP project for this remote
 dvc remote modify storage projectname mlops-colorflow
 
@@ -37,19 +49,6 @@ git push
 
 # Upload tracked data to GCS
 dvc push
-```
-
-## Download data with DVC
-
-```bash
-# Authenticate for GCS access (needed for private bucket)
-gcloud auth login
-# Allow local tools (for example DVC) to use your Google credentials
-gcloud auth application-default login
-# Set the default project for application-default credentials
-gcloud auth application-default set-quota-project mlops-colorflow
-# Pull data from DVC remote (GCS)
-dvc pull
 ```
 
 # Google Cloud Storage
