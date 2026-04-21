@@ -12,3 +12,5 @@ env/
 .env/
 # Model files
 *.pt
+# Dataset files
+pix2pix-is-all-you-need/mlops-coco/images/

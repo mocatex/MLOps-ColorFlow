@@ -2,58 +2,45 @@
 
 We use [GCS](https://cloud.google.com/) for storage and [DVC](https://dvc.org/) for data version control.
 
-# Quick Start (From Zero)
-
-Use this section if:
-- your GCS bucket is empty
-- you have no DVC project yet
+# tmp
 
 ```bash
-# 1) Go to your dataset folder (contains your images)
-cd /path/to/dataset # mlops-coco
 
-# 2) Initialize DVC
-dvc init
-
-# 3) Configure DVC remote to your bucket
-dvc remote add -d storage gs://mlops-coco
-dvc remote modify storage projectname mlops-colorflow
-
-# 4) Authenticate for GCS access
-gcloud auth login
-gcloud config set project mlops-colorflow
-gcloud auth application-default login
-gcloud auth application-default set-quota-project mlops-colorflow
-
-# 5) Track images folder with DVC
+# Track images folder with DVC
 dvc add images
 
-# 6) Commit metadata to Git
+# Configure DVC remote to your bucket
+dvc remote add -d storage gs://mlops-coco
+
+# Pin the GCP project for this remote
+dvc remote modify storage projectname mlops-colorflow
+
+# Authenticate for GCS access
+gcloud auth login
+# Set the default project (if not set already)
+gcloud config set project mlops-colorflow
+# Allow local tools (for example DVC) to use your Google credentials
+gcloud auth application-default login
+# Set the default project for application-default credentials (if not set already)
+gcloud auth application-default set-quota-project mlops-colorflow
+
+# Commit metadata to Git
 git add . # first, make sure /images is in .gitignore
 git commit -m "Track images with DVC"
 
-# 7) Push data to GCS
+# Push data to GCS
 dvc push
 ```
 
 # DVC
 
-## Install DVC
-
-```bash
-# Install DVC with Google Cloud support
-python -m pip install "dvc[gs]"
-dvc version
-```
-
 ## Setup a new DVC repository linked to GCS
 
 ```bash
-cd dir/to/dataset # mlops-coco
+cd mlops-coco
 
-# Initialize DVC in the current directory
-git init
-dvc init
+# Initialize DVC in a subdirectory
+dvc init --subdir 
 
 # Add your GCS bucket as default DVC remote
 dvc remote add -d storage gs://mlops-coco
@@ -61,14 +48,11 @@ dvc remote add -d storage gs://mlops-coco
 # Pin the GCP project for this remote
 dvc remote modify storage projectname mlops-colorflow
 
-# Optional cleanup
-find . -name '.DS_Store' -delete
-
 # Recommended: track one data directory
 dvc add images
 
 # Commit DVC metadata to Git
-git add .dvc/config .gitignore images.dvc
+git add .
 git commit -m "Track images with DVC"
 
 # Upload tracked data to GCS
@@ -121,20 +105,6 @@ source ~/.bashrc  # or source ~/.zshrc if you use zsh
 gcloud --version
 ```
 
-## Download from GCS
-
-```bash
-# First login with your Google account
-gcloud auth login 
-
-# Optionally, list the contents of the bucket to verify access
-gcloud storage ls gs://mlops-coco
-
-# Download the bucket mlops-coco to the local directory
-mkdir -p ./mlops-coco
-gcloud storage rsync --recursive gs://mlops-coco ./mlops-coco
-```
-
 ## Create a GCP Bucker
 
 ```bash
@@ -154,7 +124,36 @@ gcloud storage buckets create gs://<YOUR_BUCKET_NAME> --location=europe-west1
 # Note that YOUR_BUCKET_NAME must be globally unique across all GCP users.
 ```
 
+## Setup GCP Authentication
+
+```bash
+# Authenticate for GCS access
+gcloud auth login
+# Set the default project (if not set already)
+gcloud config set project mlops-colorflow
+# Allow local tools (for example DVC) to use your Google credentials
+gcloud auth application-default login
+# Set the default project for application-default credentials (if not set already)
+gcloud auth application-default set-quota-project mlops-colorflow
+```
+
+## Grant access to GCS bucket
+
+Common roles:
+- `roles/storage.objectViewer`: read objects
+- `roles/storage.objectCreator`: upload only
+- `roles/storage.objectAdmin`: read/write/delete objects
+
+```bash
+# Grant read access to one user
+gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
+    --member="user:someone@example.com" \
+    --role="roles/storage.objectAdmin"
+```
+
 ## Upload to GCS
+
+> Not needed because we use DVC, just kept for reference.
 
 ```bash
 # First login with your Google account
@@ -175,21 +174,23 @@ find . -name '.DS_Store' -delete # optionally before uploading
 gcloud storage rsync --recursive --exclude="(^|/)\\.DS_Store$" . gs://mlops-coco
 ```
 
-## Grant access to GCS bucket
+## Download from GCS
 
-Common roles:
-- `roles/storage.objectViewer`: read objects
-- `roles/storage.objectCreator`: upload only
-- `roles/storage.objectAdmin`: read/write/delete objects
+> Not needed because we use DVC, just kept for reference.
 
 ```bash
-# Grant read access to one user
-gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
-    --member="user:someone@example.com" \
-    --role="roles/storage.objectAdmin"
+# First login with your Google account
+gcloud auth login 
+
+# Optionally, list the contents of the bucket to verify access
+gcloud storage ls gs://mlops-coco
+
+# Download the bucket mlops-coco to the local directory
+mkdir -p ./mlops-coco
+gcloud storage rsync --recursive gs://mlops-coco ./mlops-coco
 ```
 
-# Oxen (Reference)
+# Oxen
 
 We don't use Oxen for this project, but I kept it for reference. Oxen includes storage and version control in one tool.
 
