@@ -1,0 +1,4 @@
+# Trained models
+*.pt
+# Dataset
+coco_sample/
