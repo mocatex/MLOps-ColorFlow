@@ -1,10 +1,39 @@
-# General Information
+# Quickstart
 
 We use [GCS](https://cloud.google.com/) for storage and [DVC](https://dvc.org/) for data version control.
 
-# DVC
+## 1. Install Google Cloud CLI
 
-## Download data with DVC
+Run these install commands outside this repository folder to avoid committing a local SDK directory by mistake. \
+Follow [install-sdk](https://docs.cloud.google.com/sdk/docs/install-sdk) or the following steps to install the Google Cloud CLI:
+
+
+```bash
+# 1. Determine the platform
+uname -m
+
+# 2. Download the package for your platform
+# macOS 64-bit (x86_64)
+FILE_NAME='google-cloud-cli-darwin-x86_64.tar.gz'
+# macOS 64-bit (ARM64, Apple silicon)
+FILE_NAME='google-cloud-cli-darwin-arm.tar.gz'
+# Download the appropriate file for your platform and then run the installer
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${FILE_NAME}
+
+# 3. Extract the archive
+tar -xf ${FILE_NAME}
+
+# 4. Run the installation script 
+./google-cloud-sdk/install.sh
+
+# 5. Reopen the terminal or run the following command to update your PATH
+source ~/.bashrc  # or source ~/.zshrc if you use zsh
+
+# 6. Verify the installation
+gcloud --version
+```
+
+## 2. Download data with DVC
 
 ```bash
 # Authenticate for GCS access (needed for private bucket)
@@ -19,6 +48,12 @@ cd pix2pix-is-all-you-need/mlops-coco
 # Pull data from DVC remote (GCS)
 dvc pull
 ```
+
+Now you should be good to go!
+
+<br>
+
+# DVC
 
 ## Setup DVC and link to GCS
 
@@ -52,37 +87,6 @@ dvc push
 ```
 
 # Google Cloud Storage
-
-## Install Google Cloud CLI
-
-Follow [install-sdk](https://docs.cloud.google.com/sdk/docs/install-sdk) or the following steps to install the Google Cloud CLI:
-
-Run these install commands outside this repository folder to avoid committing a local SDK directory by mistake.
-
-```bash
-# 1. Determine the platform
-uname -m
-
-# 2. Download the package for your platform
-# macOS 64-bit (x86_64)
-FILE_NAME='google-cloud-cli-darwin-x86_64.tar.gz'
-# macOS 64-bit (ARM64, Apple silicon)
-FILE_NAME='google-cloud-cli-darwin-arm.tar.gz'
-# Download the appropriate file for your platform and then run the installer
-curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${FILE_NAME}
-
-# 3. Extract the archive
-tar -xf ${FILE_NAME}
-
-# 4. Run the installation script 
-./google-cloud-sdk/install.sh
-
-# 5. Reopen the terminal or run the following command to update your PATH
-source ~/.bashrc  # or source ~/.zshrc if you use zsh
-
-# 6. Verify the installation
-gcloud --version
-```
 
 ## Create a GCP Bucket
 
@@ -119,7 +123,7 @@ gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
 
 ## Upload to GCS
 
-> Not needed because we use DVC, just kept for reference.
+Not needed because we use DVC, just kept for reference.
 
 ```bash
 # First login with your Google account
@@ -142,7 +146,7 @@ gcloud storage rsync --recursive --exclude="(^|/)\\.DS_Store$" . gs://mlops-coco
 
 ## Download from GCS
 
-> Not needed because we use DVC, just kept for reference.
+Not needed because we use DVC, just kept for reference.
 
 ```bash
 # First login with your Google account
