@@ -1,40 +1,10 @@
-# General Informations
+# General Information
 
 We use [GCS](https://cloud.google.com/) for storage and [DVC](https://dvc.org/) for data version control.
 
-# tmp
-
-```bash
-
-# Track images folder with DVC
-dvc add images
-
-# Configure DVC remote to your bucket
-dvc remote add -d storage gs://mlops-coco
-
-# Pin the GCP project for this remote
-dvc remote modify storage projectname mlops-colorflow
-
-# Authenticate for GCS access
-gcloud auth login
-# Set the default project (if not set already)
-gcloud config set project mlops-colorflow
-# Allow local tools (for example DVC) to use your Google credentials
-gcloud auth application-default login
-# Set the default project for application-default credentials (if not set already)
-gcloud auth application-default set-quota-project mlops-colorflow
-
-# Commit metadata to Git
-git add . # first, make sure /images is in .gitignore
-git commit -m "Track images with DVC"
-
-# Push data to GCS
-dvc push
-```
-
 # DVC
 
-## Setup a new DVC repository linked to GCS
+## Setup DVC and link to GCS
 
 ```bash
 cd mlops-coco
@@ -42,18 +12,28 @@ cd mlops-coco
 # Initialize DVC in a subdirectory
 dvc init --subdir 
 
+# Track one data directory
+dvc add images
+
+# Authenticate for GCS access
+gcloud auth login
+
+# Allow local tools (for example DVC) to use your Google credentials
+gcloud auth application-default login
+
+# Set the default project for application-default credentials
+gcloud auth application-default set-quota-project mlops-colorflow
+
 # Add your GCS bucket as default DVC remote
 dvc remote add -d storage gs://mlops-coco
 
 # Pin the GCP project for this remote
 dvc remote modify storage projectname mlops-colorflow
 
-# Recommended: track one data directory
-dvc add images
-
 # Commit DVC metadata to Git
 git add .
-git commit -m "Track images with DVC"
+git commit -m "track images with DVC"
+git push
 
 # Upload tracked data to GCS
 dvc push
@@ -62,14 +42,12 @@ dvc push
 ## Download data with DVC
 
 ```bash
-# Clone the Git repository that contains DVC metadata (.dvc files)
-git clone <git-repo-url>
-cd <your-git-repo-dir>
-
 # Authenticate for GCS access (needed for private bucket)
 gcloud auth login
+# Allow local tools (for example DVC) to use your Google credentials
 gcloud auth application-default login
-
+# Set the default project for application-default credentials
+gcloud auth application-default set-quota-project mlops-colorflow
 # Pull data from DVC remote (GCS)
 dvc pull
 ```
@@ -79,6 +57,8 @@ dvc pull
 ## Install Google Cloud CLI
 
 Follow [install-sdk](https://docs.cloud.google.com/sdk/docs/install-sdk) or the following steps to install the Google Cloud CLI:
+
+Run these install commands outside this repository folder to avoid committing a local SDK directory by mistake.
 
 ```bash
 # 1. Determine the platform
@@ -105,7 +85,7 @@ source ~/.bashrc  # or source ~/.zshrc if you use zsh
 gcloud --version
 ```
 
-## Create a GCP Bucker
+## Create a GCP Bucket
 
 ```bash
 # list projects to find your project ID
@@ -122,19 +102,6 @@ gcloud config set project <YOUR_PROJECT_ID>
 gcloud storage buckets create gs://<YOUR_BUCKET_NAME> --location=europe-west1
 
 # Note that YOUR_BUCKET_NAME must be globally unique across all GCP users.
-```
-
-## Setup GCP Authentication
-
-```bash
-# Authenticate for GCS access
-gcloud auth login
-# Set the default project (if not set already)
-gcloud config set project mlops-colorflow
-# Allow local tools (for example DVC) to use your Google credentials
-gcloud auth application-default login
-# Set the default project for application-default credentials (if not set already)
-gcloud auth application-default set-quota-project mlops-colorflow
 ```
 
 ## Grant access to GCS bucket
