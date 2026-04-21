@@ -1,9 +1,14 @@
-# Trained models
-*.pt
-# Dataset
-mlops-coco/
-# MacOS metadata
+# MacOS files
 .DS_Store
-# Python cache
+# Python files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+# Model files
+*.pt
