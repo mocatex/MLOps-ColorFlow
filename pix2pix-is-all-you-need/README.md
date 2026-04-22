@@ -49,6 +49,8 @@ cd pix2pix-is-all-you-need/mlops-coco
 dvc pull
 ```
 
+Next, see how you can [add new data to DVC and push to GCS](#add-new-data-to-dvc-and-push-to-gcs).
+
 Now you should be good to go! Everything else down below is just kept for reference. 
 
 <br>
@@ -156,6 +158,22 @@ git push
 
 # Upload tracked data to GCS
 dvc push
+```
+
+## Add new data to DVC and push to GCS
+
+```bash
+# Change to the dataset directory
+cd pix2pix-is-all-you-need/mlops-coco
+# update DVC metadata after adding/removing/changing files in images/
+dvc add images
+# commit metadata
+git add .
+git commit -m "Update dataset tracking"
+# upload data objects to GCS
+dvc push
+# then publish commit
+git push
 ```
 
 <br>
