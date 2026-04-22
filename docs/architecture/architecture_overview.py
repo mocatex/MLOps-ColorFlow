@@ -67,7 +67,7 @@ K8S_URL = get_icon(
 )
 
 ML_SERVER_URL = get_icon(
-    "https://raw.githubusercontent.com/mocatex/MLOps-ColorFlow/refs/heads/main/images/mlserver.png",
+    "https://github.com/mocatex/MLOps-ColorFlow/blob/main/docs/assets/mlserver.png?raw=true",
     "mlserver",
 )
 
