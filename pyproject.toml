@@ -11,4 +11,5 @@ dependencies = [
     "setuptools==69.5.1",
     "tensorboard==2.20.0",
     "tensorboard-data-server==0.7.2",
+    "pillow>=10.0.0",
 ]
