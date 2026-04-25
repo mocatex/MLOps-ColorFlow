@@ -1,0 +1,8 @@
+source: fastai_coco_sample
+external_data_size: 10000
+train_size: 8000
+image_size_1: 256
+image_size_2: 256
+batch_size: 32
+num_workers: 0
+pin_memory: true
