@@ -1,0 +1,13 @@
+source: local_directory
+path: data/images          # populated by `dvc pull`; tracked via data/images.dvc
+glob_pattern: "*.jpg"
+
+# Tiny sample dataset (10 files) — leave subsampling fields null to use all of it.
+external_data_size: null
+train_size: null
+
+image_size_1: 256
+image_size_2: 256
+batch_size: 4              # small dataset → small batches
+num_workers: 0
+pin_memory: true
