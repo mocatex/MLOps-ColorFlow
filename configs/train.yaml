@@ -1,0 +1,11 @@
+defaults:
+  - data: coco
+  - model: pix2pix
+  - training: default
+  - _self_
+
+seed: 42
+device: auto  # auto | cuda | cpu
+output_dir: outputs
+generator_checkpoint: res18-unet.pt
+gan_checkpoint: main-model.pt

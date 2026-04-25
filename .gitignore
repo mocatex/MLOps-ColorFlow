@@ -1,14 +1,41 @@
-# MacOS files
-.DS_Store
-# Python files
+# --- ML / experiment artifacts ---
+outputs/
+multirun/
+mlruns/
+mlartifacts/
+wandb/
+lightning_logs/
+*.pt
+*.pth
+*.ckpt
+*.db
+*.db-journal
+
+# --- Hydra ---
+.hydra/
+
+# --- Python ---
+.venv
+venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-# Virtual environment
-venv/
-.venv/
-env/
-.env/
-# Model files
-*.pt
+*.egg-info/
+build/
+dist/
+
+# --- Tooling caches ---
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Editor / OS ---
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~
