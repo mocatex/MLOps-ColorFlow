@@ -4,11 +4,12 @@ We use [GCS](https://cloud.google.com/) for storage and [DVC](https://dvc.org/) 
 
 ## 1. Install Google Cloud CLI
 
-Run these install commands outside this repository folder to avoid committing a local SDK directory by mistake. \
 Follow [install-sdk](https://docs.cloud.google.com/sdk/docs/install-sdk) or the following steps to install the Google Cloud CLI:
 
 
 ```bash
+# Run these install commands outside the repository folder to avoid committing a local SDK directory.
+
 # 1. Determine the platform
 uname -m
 
@@ -36,6 +37,11 @@ gcloud --version
 ## 2. Download data with DVC
 
 ```bash
+# Install the project dependencies (top repo-level environment)
+uv sync
+# Optionally, activate the environment if you want to call dvc directly
+source .venv/bin/activate
+
 # Authenticate for GCS access (needed for private bucket)
 gcloud auth login
 # Allow local tools (for example DVC) to use your Google credentials
@@ -45,8 +51,12 @@ gcloud auth application-default set-quota-project mlops-colorflow
 
 # Change to the dataset directory
 cd pix2pix-is-all-you-need/mlops-coco
+
+# Store the credential otherwise DVC may fall back to anonymous access
+uv run dvc remote modify storage --local credentialpath ~/.config/gcloud/application_default_credentials.json
+
 # Pull data from DVC remote (GCS)
-dvc pull
+uv run dvc pull
 ```
 
 Next, see how you can [add new data to DVC and push to GCS](#add-new-data-to-dvc-and-push-to-gcs).
@@ -132,12 +142,15 @@ gcloud storage rsync --recursive gs://mlops-coco ./mlops-coco
 ## Setup DVC and link to GCS
 
 ```bash
+# Install the project dependencies (creates the repo-level .venv/)
+uv sync
+
 # Change to the dataset directory
 cd pix2pix-is-all-you-need/mlops-coco
 # Initialize DVC in a subdirectory
-dvc init --subdir 
+uv run dvc init --subdir 
 # Track one data directory
-dvc add images
+uv run dvc add images
 
 # Authenticate for GCS access
 gcloud auth login
@@ -147,9 +160,11 @@ gcloud auth application-default login
 gcloud auth application-default set-quota-project mlops-colorflow
 
 # Add your GCS bucket as default DVC remote
-dvc remote add -d storage gs://mlops-coco
+uv run dvc remote add -d storage gs://mlops-coco
 # Pin the GCP project for this remote
-dvc remote modify storage projectname mlops-colorflow
+uv run dvc remote modify storage projectname mlops-colorflow
+# Store the credential path only in the local machine config (.dvc/config.local)
+uv run dvc remote modify storage --local credentialpath ~/.config/gcloud/application_default_credentials.json
 
 # Commit DVC metadata to Git
 git add .
@@ -157,21 +172,26 @@ git commit -m "track images with DVC"
 git push
 
 # Upload tracked data to GCS
-dvc push
+uv run dvc push
 ```
 
 ## Add new data to DVC and push to GCS
 
 ```bash
+# Install the project dependencies if needed
+uv sync
+# activate the environment if you want to call dvc directly
+source .venv/bin/activate
+
 # Change to the dataset directory
 cd pix2pix-is-all-you-need/mlops-coco
 # update DVC metadata after adding/removing/changing files in images/
-dvc add images
+uv run dvc add images
 # commit metadata
 git add .
 git commit -m "Update dataset tracking"
 # upload data objects to GCS
-dvc push
+uv run dvc push
 # then publish commit
 git push
 ```

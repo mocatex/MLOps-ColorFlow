@@ -1,0 +1,17 @@
+[project]
+name = "pix2pix-is-all-you-need"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets==4.0.0",
+    "fastai==2.8.7",
+    "matplotlib==3.10.0",
+    "scikit-image>=0.26.0",
+    "setuptools==69.5.1",
+    "tensorboard==2.20.0",
+    "tensorboard-data-server==0.7.2",
+    "torch==2.9.0",
+    "torchdata==0.11.0",
+    "torchvision==0.24.0",
+]
