@@ -109,12 +109,18 @@ class Unet(nn.Module):
 def build_backbone_unet(
     device, input_channels=1, output_channels=2, size=256, layers_to_cut=-2
 ):
-    """U-Net with a ResNet18 (ImageNet-pretrained) backbone."""
+    """U-Net with a ResNet18 (ImageNet-pretrained) backbone.
+
+    fastai 2.7+ ``create_body`` expects an *instantiated* model — older notebook
+    code that passed the constructor (``resnet18``) crashes at
+    ``model.named_parameters()``. Instantiating with ``ResNet18_Weights.DEFAULT``
+    loads the ImageNet weights; ``pretrained=True`` then tells fastai to adapt
+    the first conv layer for ``n_in=1`` by averaging the RGB filters.
+    """
     from fastai.vision.learner import create_body
     from fastai.vision.models.unet import DynamicUnet
-    from torchvision.models.resnet import resnet18
+    from torchvision.models import ResNet18_Weights, resnet18
 
-    body = create_body(
-        resnet18, pretrained=True, n_in=input_channels, cut=layers_to_cut
-    )
+    backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
+    body = create_body(backbone, n_in=input_channels, pretrained=True, cut=layers_to_cut)
     return DynamicUnet(body, output_channels, (size, size)).to(device)

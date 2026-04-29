@@ -1,4 +1,4 @@
-source: local_directory
+source: fastai_coco_sample
 path: data/images          # populated by `dvc pull`; tracked via data/images.dvc
 glob_pattern: "*.jpg"
 

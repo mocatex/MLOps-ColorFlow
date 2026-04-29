@@ -6,7 +6,6 @@ import torch
 from skimage.color import lab2rgb
 from torch import nn
 
-
 def resolve_device(device: str = "auto") -> torch.device:
     if device == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")

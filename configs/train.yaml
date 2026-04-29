@@ -2,6 +2,7 @@ defaults:
   - data: coco
   - model: pix2pix
   - training: default
+  - tracking: mlflow
   - _self_
 
 seed: 42

@@ -70,7 +70,8 @@ class MLflowTracker:
         self._mlflow.log_artifact(str(path), artifact_path=artifact_path)
 
     def log_pytorch_model(self, model, artifact_path):
-        self._mlflow.pytorch.log_model(model, artifact_path=artifact_path)
+        # MLflow 3.x renamed `artifact_path` -> `name` for log_model.
+        self._mlflow.pytorch.log_model(model, name=artifact_path)
 
     def set_tags(self, tags):
         self._mlflow.set_tags(tags)

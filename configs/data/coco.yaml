@@ -1,4 +1,5 @@
-source: fastai_coco_sample
+source: local_directory
+path: data/images          # populated by `dvc pull`; tracked via data/images.dvc
 external_data_size: 10000
 train_size: 8000
 image_size_1: 256
