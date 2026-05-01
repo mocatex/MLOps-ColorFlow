@@ -1,0 +1,96 @@
+# Local orchestration: MLflow tracking server backed by Postgres,
+# plus a training service that points at it.
+#
+# Typical workflow:
+#   docker compose build base                  # one-time: build the dep layer
+#   docker compose up -d postgres mlflow       # start the tracking stack
+#   docker compose run --rm training           # one-shot training run
+#   docker compose run --rm tuning             # one-shot HPO run
+#   open http://localhost:5001                 # MLflow UI
+#
+# Credentials: the host's gcloud ADC file is mounted read-only into containers
+# that need GCS access (mlflow for artifacts, training for `dvc pull`).
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow-pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/mlflow.Dockerfile
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: gs://mlops-coco/mlflow-artifacts
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health').read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  base:
+    build:
+      context: .
+      dockerfile: docker/base.Dockerfile
+    image: mlops-colorflow-base:latest
+    # `base` is built on demand by other services; not meant to run.
+    command: ["true"]
+
+  training:
+    build:
+      context: .
+      dockerfile: docker/training.Dockerfile
+      args:
+        BASE_IMAGE: mlops-colorflow-base:latest
+    image: mlops-colorflow-training:latest
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
+      # DVC_PULL: skip          # uncomment if data is bind-mounted and no DVC backend is reachable
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
+      - ./outputs:/app/outputs
+      - ./data/images:/app/data/images:ro   # local data → entrypoint auto-detects and skips dvc pull
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  # Same image as `training`, just a different default command.
+  tuning:
+    image: mlops-colorflow-training:latest
+    command: ["tune.py", "--n-trials", "20"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5001
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
+      - ./outputs:/app/outputs
+      - ./data/images:/app/data/images:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+volumes:
+  mlflow-pg:

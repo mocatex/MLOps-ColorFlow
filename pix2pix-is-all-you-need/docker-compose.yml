@@ -1,9 +1,0 @@
-services:
-  mlops-project:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: mlops-project
-    working_dir: /workspace
-    volumes:
-      - ./:/workspace
