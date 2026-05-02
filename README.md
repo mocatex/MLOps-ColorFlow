@@ -10,6 +10,8 @@ source .venv/bin/activate
 
 # Local Setup
 
+**See [DVC](./DVC.MD) for Training set File download**
+
 Build the dep layer (~5 min)
 > docker compose build base
 *(if building fails because of oauth)*
