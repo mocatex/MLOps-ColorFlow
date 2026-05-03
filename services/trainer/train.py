@@ -71,6 +71,17 @@ def run(cfg: DictConfig) -> float:
             start_epoch=start_epoch,
         )
 
+        # Emit a run-level selection metric for the model-registry job.
+        # The registry currently ranks runs by descending score, so negate the
+        # validation loss to keep "higher is better" semantics there.
+        best_val_l1 = float(result["best_val_loss_G_L1"])
+        tracker.log_metrics(
+            {
+                "best_val_loss_G_L1": best_val_l1,
+                "selection_score": -best_val_l1,
+            }
+        )
+
         # Log the best generator as an MLflow PyTorch model so mlserver-mlflow
         # can serve it without a custom runtime. Only meaningful for the MLflow
         # backend; NoopTracker.log_pytorch_model is a no-op.
@@ -80,7 +91,7 @@ def run(cfg: DictConfig) -> float:
             model.generator.load_state_dict(state["generator_state_dict"])
             tracker.log_pytorch_model(model.generator, artifact_path="generator")
 
-        return float(result["best_val_loss_G_L1"])
+        return best_val_l1
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")

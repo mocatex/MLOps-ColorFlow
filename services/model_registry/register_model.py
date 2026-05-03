@@ -41,7 +41,7 @@ def wait_for_model_version(client: MlflowClient, model_name: str, version: str) 
 
 def main() -> None:
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-    experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "demo-training")
+    experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "colorflow")
     model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-demo-model")
     metric_name = os.environ.get("SELECTION_METRIC", "selection_score")
 

@@ -3,7 +3,7 @@ generator:
   output_channels: 2
   n_down: 8
   num_filters: 64
-  use_pretrained_backbone: true
+  use_pretrained_backbone: false # changed for testing
   layers_to_cut: -2
 
 discriminator:

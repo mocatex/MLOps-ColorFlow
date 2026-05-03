@@ -6,4 +6,4 @@ image_size_1: 256
 image_size_2: 256
 batch_size: 4
 num_workers: 0
-pin_memory: true
+pin_memory: false # changed for testint
