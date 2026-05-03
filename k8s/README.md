@@ -119,10 +119,13 @@ The base scaffold now already includes a minimal PostgreSQL and MLflow setup.
 
 It also includes a minimal one-shot training `Job` named `demo-trainer` that logs a single run to MLflow and writes a tiny checkpoint file onto the `model-checkpoints` volume.
 
+After training completes, a separate `demo-model-registry` job can register the best finished run by the `selection_score` metric, create a version in MLflow Model Registry as `colorflow-demo-model`, and update the `champion` alias to that version.
+
 ## Demo Apps
 
 This repo now includes a minimal end-to-end demo:
 
+- `services/model_registry/`: registration script that selects the best run and creates a model version in MLflow Model Registry
 - `services/trainer/`: one-shot training script that logs a single MLflow run
 - `services/ui/`: static frontend served by NGINX
 - `services/mlserver/`: custom MLServer runtime serving a toy linear model
@@ -131,10 +134,12 @@ Local build and deploy flow:
 
 ```bash
 docker build -t colorflow-mlflow:local services/mlflow
+docker build -t colorflow-model-registry:local services/model_registry
 docker build -t colorflow-trainer:local services/trainer
 docker build -t colorflow-ui:local services/ui
 docker build -t colorflow-mlserver:local services/mlserver
 kind load docker-image colorflow-mlflow:local --name colorflow
+kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
 kind load docker-image colorflow-ui:local --name colorflow
 kind load docker-image colorflow-mlserver:local --name colorflow
@@ -158,14 +163,77 @@ To inspect the demo training job:
 ```bash
 kubectl get jobs -n colorflow
 kubectl logs job/demo-trainer -n colorflow
+kubectl logs job/demo-model-registry -n colorflow
 ```
+
+## Trigger Training Job
+
+If you changed the trainer or registry code, rebuild the images and load them into the local `kind` cluster first:
+
+```bash
+docker build -t colorflow-model-registry:local services/model_registry
+docker build -t colorflow-trainer:local services/trainer
+kind load docker-image colorflow-model-registry:local --name colorflow
+kind load docker-image colorflow-trainer:local --name colorflow
+```
+
+Then run the ordered flow:
+
+```bash
+./scripts/run_training_and_register.sh
+```
+
+The script does four things in order:
+
+- deletes any old `demo-trainer` and `demo-model-registry` jobs,
+- applies the local overlay so the trainer job is created,
+- waits for `demo-trainer` to complete and prints its logs,
+- creates `demo-model-registry`, waits for it to complete, and prints its logs.
+
+If you want to run the same steps manually instead of using the script:
+
+```bash
+kubectl delete job demo-trainer demo-model-registry -n colorflow --ignore-not-found
+kubectl apply -k k8s/overlays/local
+kubectl wait --for=condition=complete job/demo-trainer -n colorflow
+kubectl logs job/demo-trainer -n colorflow
+kubectl apply -f k8s/jobs/model-registry/local/job.yaml
+kubectl wait --for=condition=complete job/demo-model-registry -n colorflow
+kubectl logs job/demo-model-registry -n colorflow
+```
+
+If you want to watch the run appear in MLflow while the job is running:
+
+```bash
+kubectl port-forward -n colorflow svc/mlflow 5000:5000
+```
+
+Then open `http://localhost:5000`, inspect the `demo-training` experiment, and open the `Models` tab to inspect `colorflow-demo-model` and the `champion` alias.
+
+## Inspect Persistent Storage
+
+The `model-checkpoints` persistent volume claim is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
+
+```bash
+docker exec colorflow-worker ls -la /var/local-path-provisioner
+docker exec colorflow-worker cat /var/local-path-provisioner/pvc-823f4bfe-04ee-471e-9566-00813734c6d1_colorflow_model-checkpoints/demo-checkpoint.json
+```
+
+This direct path is specific to the current local cluster. In this setup, the checkpoint PVC is backed by:
+
+```bash
+/var/local-path-provisioner/pvc-823f4bfe-04ee-471e-9566-00813734c6d1_colorflow_model-checkpoints
+```
+
+On GKE, the inspection flow will differ because the storage backend will not use the local-path provisioner.
 
 If you want to run it again after it completes:
 
 ```bash
-kubectl delete job demo-trainer -n colorflow
-kubectl apply -k k8s/overlays/local
+./scripts/run_training_and_register.sh
 ```
+
+The delete can fail with `NotFound` because the job is configured with `ttlSecondsAfterFinished: 300`, so Kubernetes removes it automatically about five minutes after it completes.
 
 ## Why This Is Minimal
 

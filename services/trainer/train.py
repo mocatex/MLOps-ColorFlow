@@ -3,6 +3,16 @@ import os
 import pathlib
 
 import mlflow
+import mlflow.pyfunc  # type: ignore[import-not-found]
+
+
+class LinearRegressionDemoModel(mlflow.pyfunc.PythonModel):
+    def predict(self, context, model_input, params=None):
+        if hasattr(model_input, "to_dict"):
+            records = model_input.to_dict(orient="records")
+            return [(2.0 * float(record["x"])) + 1.0 for record in records]
+
+        return [(2.0 * float(value)) + 1.0 for value in model_input]
 
 
 def main() -> None:
@@ -15,6 +25,7 @@ def main() -> None:
 
     x_value = 3.0
     prediction = (2.0 * x_value) + 1.0
+    selection_score = 1.0
 
     checkpoint_path = checkpoints_dir / "demo-checkpoint.json"
     checkpoint_path.write_text(
@@ -35,7 +46,13 @@ def main() -> None:
         mlflow.log_param("formula", "y = 2x + 1")
         mlflow.log_metric("example_input", x_value)
         mlflow.log_metric("example_prediction", prediction)
+        mlflow.log_metric("selection_score", selection_score)
         mlflow.log_artifact(str(checkpoint_path), artifact_path="checkpoints")
+        mlflow.pyfunc.log_model(
+            artifact_path="model",
+            python_model=LinearRegressionDemoModel(),
+            pip_requirements=["mlflow==2.22.0"],
+        )
 
     print(f"Logged MLflow run with prediction={prediction}")
 
