@@ -1,0 +1,9 @@
+source: local_directory
+path: data/images # populated by `dvc pull`; tracked via data/images.dvc
+external_data_size: 16 # number of images in the dataset; used for train/val split and progress bars
+train_size: 4 # number of images to use for training; the rest will be used for validation
+image_size_1: 256
+image_size_2: 256
+batch_size: 4
+num_workers: 0
+pin_memory: true

@@ -1,0 +1,24 @@
+epochs: 20
+
+pretrain:
+  enabled: true
+  lr: 1.0e-4
+  weight_decay: 0.0
+  epochs: 20
+
+gan:
+  gen_lr: 2.0e-4
+  disc_lr: 2.0e-4
+  beta1: 0.5
+  beta2: 0.999
+  weight_decay: 0.0
+
+checkpoint:
+  dir: ${output_dir}/checkpoints
+  monitor_pretrain: pretrain_val_l1
+  monitor_gan: val_loss_G_L1
+  mode: min
+  save_every: 1
+  keep_last: 3
+  resume_pretrain: null   # path to a pretrain_*.pt file
+  resume_gan: null        # path to a gan_*.pt file
