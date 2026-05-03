@@ -12,6 +12,9 @@ source .venv/bin/activate
 
 **See [DVC](./DVC.MD) for Training set File download**
 
+**Run once locally for GCloud project setup**
+gcloud config set project mlops-colorflow
+
 Build the dep layer (~5 min)
 > docker compose build base
 *(if building fails because of oauth)*

@@ -1,4 +1,4 @@
 backend: mlflow
 experiment: colorflow
 run_name: null
-tracking_uri: null   # null → ./mlruns; for a server use http://localhost:5001
+tracking_uri: ${oc.env:MLFLOW_TRACKING_URI,http://localhost:5001}
