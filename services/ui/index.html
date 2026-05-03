@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ColorFlow Demo Inference</title>
+    <title>ColorFlow Model Registry Demo</title>
     <style>
       :root {
         --bg: #f6f0e8;
@@ -128,12 +128,12 @@
   <body>
     <main>
       <p class="eyebrow">Minimal Kubernetes Demo</p>
-      <h1>UI to MLServer inference</h1>
+      <h1>UI to registry-backed inference</h1>
       <p>
-        This demo sends one numeric feature to MLServer and gets back a prediction from
-        a minimal linear model.
+        This demo sends one numeric feature to the in-cluster inference API, which serves
+        the current MLflow <code>champion</code> model alias.
       </p>
-      <p class="formula">Model: y = 2x + 1</p>
+      <p class="formula">Served source: MLflow Model Registry alias <code>champion</code></p>
 
       <form id="inference-form" class="grid">
         <div>

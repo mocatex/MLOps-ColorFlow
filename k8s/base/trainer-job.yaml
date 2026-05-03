@@ -20,6 +20,8 @@ spec:
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow:5000
           volumeMounts:
+            - name: mlflow-artifacts
+              mountPath: /mlflow/artifacts
             - name: checkpoints
               mountPath: /checkpoints
           resources:
@@ -30,6 +32,9 @@ spec:
               cpu: 250m
               memory: 512Mi
       volumes:
+        - name: mlflow-artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts
         - name: checkpoints
           persistentVolumeClaim:
             claimName: model-checkpoints

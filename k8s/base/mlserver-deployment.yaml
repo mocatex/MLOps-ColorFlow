@@ -17,6 +17,18 @@ spec:
         - name: mlserver
           image: colorflow-mlserver
           imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: colorflow-demo-model
+            - name: MLFLOW_REGISTERED_MODEL_ALIAS
+              value: champion
+            - name: SERVED_MODEL_NAME
+              value: linear-regression
+          volumeMounts:
+            - name: mlflow-artifacts
+              mountPath: /mlflow/artifacts
           ports:
             - containerPort: 8080
               name: http
@@ -39,3 +51,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: mlflow-artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts
