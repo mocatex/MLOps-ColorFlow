@@ -5,6 +5,8 @@ resources:
 images:
   - name: colorflow-mlflow
     newTag: local
+  - name: colorflow-model-registry
+    newTag: local
   - name: colorflow-trainer
     newTag: local
   - name: colorflow-ui

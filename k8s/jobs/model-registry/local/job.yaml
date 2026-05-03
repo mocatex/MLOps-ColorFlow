@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: demo-trainer
+  name: demo-model-registry
   namespace: colorflow
 spec:
   backoffLimit: 0
@@ -9,27 +9,26 @@ spec:
   template:
     metadata:
       labels:
-        app: demo-trainer
+        app: demo-model-registry
     spec:
       restartPolicy: Never
       containers:
-        - name: trainer
-          image: colorflow-trainer
+        - name: registry
+          image: colorflow-model-registry:local
           imagePullPolicy: IfNotPresent
           env:
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow:5000
-          volumeMounts:
-            - name: checkpoints
-              mountPath: /checkpoints
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: demo-training
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: colorflow-demo-model
+            - name: SELECTION_METRIC
+              value: selection_score
           resources:
             requests:
               cpu: 50m
               memory: 128Mi
             limits:
               cpu: 250m
-              memory: 512Mi
-      volumes:
-        - name: checkpoints
-          persistentVolumeClaim:
-            claimName: model-checkpoints
+              memory: 256Mi
