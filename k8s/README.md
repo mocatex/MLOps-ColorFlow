@@ -128,7 +128,7 @@ This repo now includes a minimal end-to-end demo:
 - `services/model_registry/`: registration script that selects the best run and creates a model version in MLflow Model Registry
 - `services/trainer/`: one-shot training script that logs a single MLflow run
 - `services/ui/`: static frontend served by NGINX
-- `services/mlserver/`: custom MLServer runtime serving a toy linear model
+- `services/mlserver/`: minimal inference API that serves the MLflow `champion` model alias
 
 Local build and deploy flow:
 
@@ -147,6 +147,8 @@ kubectl apply -k k8s/overlays/local
 ```
 
 Once ingress is ready, open `http://localhost` and the UI will call `http://localhost/v2/models/linear-regression/infer` through the same ingress.
+
+The serving pod resolves `models:/colorflow-demo-model@champion` from MLflow. If no champion model exists yet, the pod stays live but not ready until the training and registry flow completes.
 
 To access MLflow locally, use port forwarding instead of public ingress:
 
@@ -189,6 +191,8 @@ The script does four things in order:
 - applies the local overlay so the trainer job is created,
 - waits for `demo-trainer` to complete and prints its logs,
 - creates `demo-model-registry`, waits for it to complete, and prints its logs.
+
+Because the serving layer resolves the `champion` alias from MLflow, it will start serving the newly registered best model after the alias changes.
 
 If you want to run the same steps manually instead of using the script:
 
