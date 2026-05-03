@@ -20,7 +20,7 @@ spec:
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow:5000
             - name: MLFLOW_EXPERIMENT_NAME
-              value: demo-training
+              value: colorflow
             - name: MLFLOW_REGISTERED_MODEL_NAME
               value: colorflow-demo-model
             - name: SELECTION_METRIC

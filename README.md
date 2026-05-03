@@ -112,7 +112,8 @@ This repo now includes a minimal end-to-end demo:
 
 ```bash
 # materialize the training dataset manually before building the trainer image
-(cd services/trainer && uv run dvc pull)
+cd services/trainer
+uv run dvc pull # see services/trainer/DVC.MD for details
 # build images
 docker build -t colorflow-mlflow:local services/mlflow
 docker build -t colorflow-model-registry:local services/model_registry
@@ -213,7 +214,6 @@ kubectl delete --ignore-not-found -k k8s/overlays/local
 ```sh
 kind delete cluster --name colorflow
 ```
-
 
 ## Trigger Training Job
 
