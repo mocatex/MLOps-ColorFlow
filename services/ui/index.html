@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ColorFlow Demo Inference</title>
+    <style>
+      :root {
+        --bg: #f6f0e8;
+        --panel: rgba(255, 252, 246, 0.85);
+        --ink: #19222e;
+        --muted: #5c6875;
+        --accent: #e76f51;
+        --accent-2: #2a9d8f;
+        --line: rgba(25, 34, 46, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(231, 111, 81, 0.24), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(42, 157, 143, 0.22), transparent 38%),
+          linear-gradient(135deg, #f5eadf, var(--bg));
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        width: min(720px, 100%);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: 32px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 24px 80px rgba(25, 34, 46, 0.12);
+      }
+
+      .eyebrow {
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 0.76rem;
+        color: var(--accent-2);
+        margin: 0 0 12px;
+      }
+
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4rem);
+        line-height: 0.95;
+        margin: 0;
+        max-width: 10ch;
+      }
+
+      p {
+        color: var(--muted);
+        font-size: 1.04rem;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+        margin-top: 28px;
+      }
+
+      label {
+        font-size: 0.92rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      input {
+        width: 100%;
+        padding: 16px 18px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.8);
+        font-size: 1.1rem;
+      }
+
+      button {
+        width: fit-content;
+        padding: 14px 20px;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--accent), #f4a261);
+        color: white;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+
+      .result {
+        margin-top: 24px;
+        padding: 18px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--line);
+      }
+
+      .result strong {
+        display: block;
+        font-size: 2rem;
+        margin-top: 6px;
+      }
+
+      .formula {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(42, 157, 143, 0.12);
+        color: #1d6d64;
+      }
+
+      .error {
+        color: #a61e4d;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Minimal Kubernetes Demo</p>
+      <h1>UI to MLServer inference</h1>
+      <p>
+        This demo sends one numeric feature to MLServer and gets back a prediction from
+        a minimal linear model.
+      </p>
+      <p class="formula">Model: y = 2x + 1</p>
+
+      <form id="inference-form" class="grid">
+        <div>
+          <label for="x-value">Input feature x</label>
+          <input id="x-value" name="x-value" type="number" step="any" value="3" required />
+        </div>
+        <button type="submit">Run inference</button>
+      </form>
+
+      <section class="result" aria-live="polite">
+        <div id="status">Ready</div>
+        <strong id="prediction">7.0</strong>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("inference-form");
+      const status = document.getElementById("status");
+      const prediction = document.getElementById("prediction");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const xValue = Number(document.getElementById("x-value").value);
+
+        status.textContent = "Calling MLServer...";
+        status.className = "";
+
+        try {
+          const response = await fetch("/v2/models/linear-regression/infer", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              inputs: [
+                {
+                  name: "x",
+                  shape: [1],
+                  datatype: "FP64",
+                  data: [xValue]
+                }
+              ]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Inference request failed with status ${response.status}`);
+          }
+
+          const payload = await response.json();
+          const value = payload.outputs?.[0]?.data?.[0];
+
+          if (typeof value !== "number") {
+            throw new Error("Prediction was missing from the response");
+          }
+
+          status.textContent = `Inference complete for x = ${xValue}`;
+          prediction.textContent = value.toFixed(2);
+        } catch (error) {
+          status.textContent = error.message;
+          status.className = "error";
+          prediction.textContent = "-";
+        }
+      });
+    </script>
+  </body>
+  </html>

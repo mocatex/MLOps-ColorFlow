@@ -1,0 +1,49 @@
+digraph "ColorFlow - GAN Image Colorizer Architecture" {
+	graph [bgcolor=transparent dpi=300 fontcolor="#2D3436" fontname="Sans-Serif" fontsize=25 label="ColorFlow - GAN Image Colorizer Architecture" nodesep=0.4 pad=0.5 rankdir=LR ranksep=0.8 splines=spline]
+	node [fixedsize=true fontcolor="#2D3436" fontname="Arial Bold" fontsize=20 height=1.4 imagescale=true labelloc=b shape=box style=rounded width=1.4]
+	edge [color="#7B8894" fontname=Arial fontsize=42 penwidth=5]
+	"576a4946dbae482e8c7daed51d3dc40c" [label="
+GitHub
+(Code & Actions)" height=2.7 image="/Users/domizai/Documents/ZHAW/Semester-8/Machine-Learning-Operations-MLOPS/MLOps-ColorFlow/.venv/lib/python3.14/site-packages/resources/onprem/vcs/github.png" shape=none]
+	e63b3e4a8be541b3abe23aaa32d8b48a -> "2e09919e53874e94a97b7797f8544a1b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	subgraph "cluster_Local Data Processing" {
+		graph [bgcolor="#bbdcf3" fontname="Sans-Serif" fontsize=22 label="Local Data Processing" labeljust=l margin=30 pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		e63b3e4a8be541b3abe23aaa32d8b48a [label=Preprocessing height=1.9 image="/Users/domizai/Documents/ZHAW/Semester-8/Machine-Learning-Operations-MLOPS/MLOps-ColorFlow/.venv/lib/python3.14/site-packages/resources/programming/language/python.png" shape=none]
+		"2e09919e53874e94a97b7797f8544a1b" [label="Images (DVC)" height=1.9 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/dvc.png" shape=none]
+	}
+	"87b69f1e20524d13938258a668e1a0f2" [label="GCS
+Data Lake" height=2.3 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/gcs.png" shape=none]
+	"2d380c8b8c354733919b82af1670999a" -> "6d1811ecd7e84440b3da60a47f6a5b52" [label="Inference
+
+" dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=20 minlen=1.5]
+	subgraph "cluster_Production Kubernetes Cluster" {
+		graph [bgcolor="#bbdcf3" fontname="Sans-Serif" fontsize=22 label="Production Kubernetes Cluster" labeljust=l margin=30 pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+		"240e258dd81742ca912dfc92129c6671" [label=Kubernetes height=1.9 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/kubernetes.png" shape=none]
+		"1c8ef4440eb949ba95037b898e897b56" [label="
+Dagster
+Orchestration" height=2.7 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/dagster.png" shape=none]
+		subgraph "cluster_Training & Tracking" {
+			graph [bgcolor="#e4a8d1" fontname="Sans-Serif" fontsize=22 label="Training & Tracking" labeljust=l pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"1219771fd178415cb2d4fe6b26d2f19b" [label="MLflow
+Experiment Tracking" height=2.3 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/mlflow.png" shape=none]
+		}
+		"558e3608eb724a8eba8e59148eebcbd8" [label="Shared Checkpoints" height=1.9 image="/Users/domizai/Documents/ZHAW/Semester-8/Machine-Learning-Operations-MLOPS/MLOps-ColorFlow/.venv/lib/python3.14/site-packages/resources/k8s/storage/pv.png" shape=none]
+		subgraph "cluster_Serving Layer" {
+			graph [bgcolor="#ffe0af" fontname="Sans-Serif" fontsize=22 label="Serving Layer" labeljust=l margin=30 pencolor="#AEB6BE" rankdir=LR shape=box style=rounded]
+			"6d1811ecd7e84440b3da60a47f6a5b52" [label=MLServer height=1.9 image="/var/folders/fn/0zvj1nh53gv_dt6vdq87ryk40000gn/T/tmpyqdnqr5q/mlserver.png" shape=none]
+			"2d380c8b8c354733919b82af1670999a" [label="Website
+(User Interface)" group=frontend height=2.3 image="/Users/domizai/Documents/ZHAW/Semester-8/Machine-Learning-Operations-MLOPS/MLOps-ColorFlow/.venv/lib/python3.14/site-packages/resources/programming/framework/react.png" shape=none]
+		}
+	}
+	"5deb9ab09d4d4aaf92fb411b28b09e10" [label="End Users" height=1.9 image="/Users/domizai/Documents/ZHAW/Semester-8/Machine-Learning-Operations-MLOPS/MLOps-ColorFlow/.venv/lib/python3.14/site-packages/resources/onprem/client/users.png" shape=none]
+	"5deb9ab09d4d4aaf92fb411b28b09e10" -> "6d1811ecd7e84440b3da60a47f6a5b52" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 style=invis]
+	"5deb9ab09d4d4aaf92fb411b28b09e10" -> "2d380c8b8c354733919b82af1670999a" [constraint=false dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=20 minlen=2.0 xlabel="  Uses  "]
+	"576a4946dbae482e8c7daed51d3dc40c" -> "1c8ef4440eb949ba95037b898e897b56" [label="automatically trigger
+
+" color=darkblue dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=18 style=dashed]
+	"2e09919e53874e94a97b7797f8544a1b" -> "87b69f1e20524d13938258a668e1a0f2" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"87b69f1e20524d13938258a668e1a0f2" -> "1219771fd178415cb2d4fe6b26d2f19b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 tailport=e]
+	"1c8ef4440eb949ba95037b898e897b56" -> "1219771fd178415cb2d4fe6b26d2f19b" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"1219771fd178415cb2d4fe6b26d2f19b" -> "558e3608eb724a8eba8e59148eebcbd8" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13]
+	"558e3608eb724a8eba8e59148eebcbd8" -> "6d1811ecd7e84440b3da60a47f6a5b52" [dir=forward fontcolor="#2D3436" fontname="Sans-Serif" fontsize=13 tailport=e]
+}
