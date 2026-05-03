@@ -4,6 +4,14 @@ resources:
   - namespace.yaml
   - limitrange.yaml
   - checkpoints-pvc.yaml
+  - mlflow-secret.yaml
+  - postgres-pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - mlflow-artifacts-pvc.yaml
+  - mlflow-deployment.yaml
+  - mlflow-service.yaml
+  - trainer-job.yaml
   - mlserver-deployment.yaml
   - mlserver-service.yaml
   - ui-deployment.yaml

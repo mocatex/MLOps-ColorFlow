@@ -3,6 +3,12 @@ kind: Kustomization
 resources:
   - ../../base
 images:
+  - name: colorflow-mlflow
+    newName: europe-west6-docker.pkg.dev/project-id/colorflow/colorflow-mlflow
+    newTag: latest
+  - name: colorflow-trainer
+    newName: europe-west6-docker.pkg.dev/project-id/colorflow/colorflow-trainer
+    newTag: latest
   - name: colorflow-ui
     newName: europe-west6-docker.pkg.dev/project-id/colorflow/colorflow-ui
     newTag: latest
