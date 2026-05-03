@@ -1,0 +1,23 @@
+generator:
+  input_channels: 1
+  output_channels: 2
+  n_down: 8
+  num_filters: 64
+  use_pretrained_backbone: true
+  layers_to_cut: -2
+
+discriminator:
+  input_channels: 3
+  num_filters: 64
+  n_down: 3
+
+block:
+  leaky_relu_slope: 0.2
+  dropout: 0.5
+  kernel_size: 4
+  stride: 2
+  padding: 1
+
+loss:
+  gan_mode: vanilla
+  lambda_l1: 100

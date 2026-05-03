@@ -1,0 +1,51 @@
+# Mirror .gitignore — keep build context lean and avoid baking secrets/data.
+outputs/
+multirun/
+mlruns/
+mlartifacts/
+wandb/
+lightning_logs/
+*.pt
+*.pth
+*.ckpt
+*.db
+*.db-journal
+
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# VCS / IDE / OS
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+
+# DVC: ship .dvc/config + the .dvc pointer files; never the cache or local creds
+data/images/
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# Reference notebook is not part of the pipeline
+pix2pix-is-all-you-need/
+pix2pix-is-all-you-need.ipynb
+
+# Docs / scripts not needed inside the image
+README.md
+*.md
+docs/
+run_training.sh

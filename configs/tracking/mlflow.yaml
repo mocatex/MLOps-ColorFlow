@@ -1,0 +1,4 @@
+backend: mlflow
+experiment: colorflow
+run_name: null
+tracking_uri: ${oc.env:MLFLOW_TRACKING_URI,http://localhost:5001}

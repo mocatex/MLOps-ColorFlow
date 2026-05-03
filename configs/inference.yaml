@@ -1,0 +1,13 @@
+defaults:
+  - data: coco       # only image_size_* fields are used
+  - model: pix2pix   # used as a fallback when use_embedded_config=false
+  - _self_
+
+device: auto
+checkpoint_path: outputs/checkpoints/gan_best.pt
+input_image: ???
+output_image: outputs/colorized.png
+
+# Self-describing checkpoints carry their own architecture config — set this
+# false (and rely on the model/data groups above) only for legacy checkpoints.
+use_embedded_config: true
