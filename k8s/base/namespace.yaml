@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: colorflow
+  labels:
+    app.kubernetes.io/name: colorflow
+    app.kubernetes.io/part-of: mlops-colorflow

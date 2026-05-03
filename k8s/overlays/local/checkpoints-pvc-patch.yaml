@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+spec:
+  resources:
+    requests:
+      storage: 10Gi
