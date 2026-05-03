@@ -3,6 +3,10 @@ kind: Kustomization
 resources:
   - ../../base
 images:
+  - name: colorflow-mlflow
+    newTag: local
+  - name: colorflow-trainer
+    newTag: local
   - name: colorflow-ui
     newTag: local
   - name: colorflow-mlserver

@@ -2,11 +2,13 @@
 
 This folder contains a minimal Kubernetes scaffold for this project.
 
-It does not deploy the application yet. It only prepares the cluster shape you will need later:
+It now deploys a minimal platform slice and a demo application:
 
 - one namespace,
 - basic resource defaults,
 - one persistent volume claim for model checkpoints,
+- one PostgreSQL deployment for MLflow metadata,
+- one MLflow deployment with a persistent artifact store,
 - one local `kind` cluster configuration,
 - one Kustomize overlay for local development,
 - one Kustomize overlay for GKE.
@@ -45,6 +47,7 @@ Validate:
 kubectl get ns colorflow
 kubectl get pvc -n colorflow
 kubectl describe limitrange default-resource-defaults -n colorflow
+kubectl get pods -n colorflow
 ```
 
 Note: the `model-checkpoints` PVC can remain `Pending` until the first pod mounts it. That is expected when the storage class uses `WaitForFirstConsumer`.
@@ -112,24 +115,57 @@ After applying an overlay, the cluster is ready for later workloads such as:
 - frontend deployment
 - internal API deployment
 
+The base scaffold now already includes a minimal PostgreSQL and MLflow setup.
+
+It also includes a minimal one-shot training `Job` named `demo-trainer` that logs a single run to MLflow and writes a tiny checkpoint file onto the `model-checkpoints` volume.
+
 ## Demo Apps
 
 This repo now includes a minimal end-to-end demo:
 
+- `services/trainer/`: one-shot training script that logs a single MLflow run
 - `services/ui/`: static frontend served by NGINX
 - `services/mlserver/`: custom MLServer runtime serving a toy linear model
 
 Local build and deploy flow:
 
 ```bash
+docker build -t colorflow-mlflow:local services/mlflow
+docker build -t colorflow-trainer:local services/trainer
 docker build -t colorflow-ui:local services/ui
 docker build -t colorflow-mlserver:local services/mlserver
+kind load docker-image colorflow-mlflow:local --name colorflow
+kind load docker-image colorflow-trainer:local --name colorflow
 kind load docker-image colorflow-ui:local --name colorflow
 kind load docker-image colorflow-mlserver:local --name colorflow
 kubectl apply -k k8s/overlays/local
 ```
 
 Once ingress is ready, open `http://localhost` and the UI will call `http://localhost/v2/models/linear-regression/infer` through the same ingress.
+
+To access MLflow locally, use port forwarding instead of public ingress:
+
+```bash
+kubectl port-forward -n colorflow svc/mlflow 5000:5000
+```
+
+Then open `http://localhost:5000`.
+
+PostgreSQL is kept internal only. MLflow uses PostgreSQL for metadata and the `mlflow-artifacts` persistent volume claim for artifacts.
+
+To inspect the demo training job:
+
+```bash
+kubectl get jobs -n colorflow
+kubectl logs job/demo-trainer -n colorflow
+```
+
+If you want to run it again after it completes:
+
+```bash
+kubectl delete job demo-trainer -n colorflow
+kubectl apply -k k8s/overlays/local
+```
 
 ## Why This Is Minimal
 

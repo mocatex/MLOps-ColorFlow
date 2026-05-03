@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-trainer
+  namespace: colorflow
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: demo-trainer
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: colorflow-trainer
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /checkpoints
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+      volumes:
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: model-checkpoints
