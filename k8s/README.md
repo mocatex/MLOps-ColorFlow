@@ -104,23 +104,6 @@ kubectl get pvc -n colorflow
 
 The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
 
-## What This Gives You
-
-After applying an overlay, the cluster is ready for later workloads such as:
-
-- training `Job` or `CronJob`
-- MLflow deployment
-- PostgreSQL deployment
-- MLServer deployment
-- frontend deployment
-- internal API deployment
-
-The base scaffold now already includes a minimal PostgreSQL and MLflow setup.
-
-It also includes a minimal one-shot training `Job` named `demo-trainer` that logs a single run to MLflow and writes a tiny checkpoint file onto the `model-checkpoints` volume.
-
-After training completes, a separate `demo-model-registry` job can register the best finished run by the `selection_score` metric, create a version in MLflow Model Registry as `colorflow-demo-model`, and update the `champion` alias to that version.
-
 ## Demo Apps
 
 This repo now includes a minimal end-to-end demo:
@@ -133,16 +116,19 @@ This repo now includes a minimal end-to-end demo:
 Local build and deploy flow:
 
 ```bash
+# build images
 docker build -t colorflow-mlflow:local services/mlflow
 docker build -t colorflow-model-registry:local services/model_registry
 docker build -t colorflow-trainer:local services/trainer
 docker build -t colorflow-ui:local services/ui
 docker build -t colorflow-mlserver:local services/mlserver
+# load images into kind cluster
 kind load docker-image colorflow-mlflow:local --name colorflow
 kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
 kind load docker-image colorflow-ui:local --name colorflow
 kind load docker-image colorflow-mlserver:local --name colorflow
+# apply the local overlay to create the resources
 kubectl apply -k k8s/overlays/local
 ```
 
@@ -167,6 +153,20 @@ kubectl get jobs -n colorflow
 kubectl logs job/demo-trainer -n colorflow
 kubectl logs job/demo-model-registry -n colorflow
 ```
+
+## Shutdown
+
+1. Stop the deployed services but keep Kubernetes running:
+
+```sh
+kubectl delete -k k8s/overlays/local
+```
+2. Tear everything down, including the local cluster:
+
+```sh
+kind delete cluster --name colorflow
+```
+
 
 ## Trigger Training Job
 
@@ -238,15 +238,3 @@ If you want to run it again after it completes:
 ```
 
 The delete can fail with `NotFound` because the job is configured with `ttlSecondsAfterFinished: 300`, so Kubernetes removes it automatically about five minutes after it completes.
-
-## Why This Is Minimal
-
-This scaffold intentionally avoids:
-
-- Helm charts
-- Terraform
-- GitOps controllers
-- workflow orchestration
-- public ingress manifests for your application
-
-Those can be added after the first real services exist.
