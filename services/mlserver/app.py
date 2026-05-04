@@ -114,7 +114,7 @@ def image_bytes_to_l_tensor(image_bytes: bytes, image_size: int) -> np.ndarray:
         raise HTTPException(status_code=400, detail=f"Invalid image upload: {error}") from error
 
     image = image.resize((image_size, image_size))
-    rgb = np.asarray(image, dtype=np.float32)
+    rgb = np.asarray(image)
     lab = rgb2lab(rgb).astype(np.float32)
     l_channel = (lab[..., 0] / 50.0) - 1.0
     return l_channel[np.newaxis, np.newaxis, ...]
