@@ -36,7 +36,7 @@ class InferenceResponse(BaseModel):
 class ChampionModelServer:
     def __init__(self) -> None:
         self.tracking_uri = "http://mlflow:5000"
-        self.registered_model_name = "colorflow-demo-model"
+        self.registered_model_name = "colorflow-model"
         self.registered_model_alias = "champion"
         self.served_model_name = "linear-regression"
         self.client: MlflowClient | None = None
@@ -88,7 +88,7 @@ class ChampionModelServer:
 
 app = FastAPI(title="ColorFlow Inference API")
 app.state.tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-app.state.registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-demo-model")
+app.state.registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-model")
 app.state.registered_model_alias = os.environ.get("MLFLOW_REGISTERED_MODEL_ALIAS", "champion")
 app.state.served_model_name = os.environ.get("SERVED_MODEL_NAME", "linear-regression")
 server = ChampionModelServer()

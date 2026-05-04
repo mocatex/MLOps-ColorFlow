@@ -51,10 +51,10 @@ wait_for_job() {
 }
 
 # Cleanup any existing jobs and apply the new ones
-kubectl delete job demo-trainer demo-model-registry -n "$namespace" --ignore-not-found
+kubectl delete job demo-trainer model-registry -n "$namespace" --ignore-not-found
 # Apply the training job
 kubectl apply -k k8s/overlays/local
 wait_for_job demo-trainer
 # Apply the model registry job
 kubectl apply -f k8s/jobs/model-registry/local/job.yaml
-wait_for_job demo-model-registry
+wait_for_job model-registry

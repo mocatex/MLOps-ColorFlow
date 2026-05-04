@@ -21,7 +21,7 @@ spec:
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow:5000
             - name: MLFLOW_REGISTERED_MODEL_NAME
-              value: colorflow-demo-model
+              value: colorflow-model
             - name: MLFLOW_REGISTERED_MODEL_ALIAS
               value: champion
             - name: SERVED_MODEL_NAME
