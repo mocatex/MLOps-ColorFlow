@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: demo-trainer
+  name: trainer
   namespace: colorflow
 spec:
   backoffLimit: 0
@@ -9,7 +9,7 @@ spec:
   template:
     metadata:
       labels:
-        app: demo-trainer
+        app: trainer
     spec:
       restartPolicy: Never
       containers:
