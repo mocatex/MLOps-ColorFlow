@@ -134,7 +134,7 @@ The trainer image now expects `services/trainer/data/images` to already be prese
 
 Once ingress is ready, open `http://localhost` and the UI will call `http://localhost/v2/models/linear-regression/infer` through the same ingress.
 
-The serving pod resolves `models:/colorflow-demo-model@champion` from MLflow. If no champion model exists yet, the pod stays live but not ready until the training and registry flow completes.
+The serving pod resolves `models:/colorflow-model@champion` from MLflow. If no champion model exists yet, the pod stays live but not ready until the training and registry flow completes.
 
 ### Access MLflow locally
 
@@ -153,7 +153,7 @@ PostgreSQL is kept internal only. MLflow uses PostgreSQL for metadata and the `m
 ```bash
 kubectl get jobs -n colorflow
 kubectl logs job/demo-trainer -n colorflow
-kubectl logs job/demo-model-registry -n colorflow
+kubectl logs job/model-registry -n colorflow
 ```
 
 To inspect a running training job in more detail:
@@ -243,21 +243,21 @@ In other words, the trainer no longer runs `dvc pull` inside the container. Data
 
 The script does four things in order:
 
-- deletes any old `demo-trainer` and `demo-model-registry` jobs,
+- deletes any old `demo-trainer` and `model-registry` jobs,
 - applies the local overlay so the trainer job is created,
 - waits for `demo-trainer` to complete and prints its logs,
-- creates `demo-model-registry`, waits for it to complete, and prints its logs.
+- creates `model-registry`, waits for it to complete, and prints its logs.
 
 Because the serving layer resolves the `champion` alias from MLflow, it will start serving the newly registered best model after the alias changes.
 
 If you want to run the same steps manually instead of using the script:
 
 ```bash
-kubectl delete job demo-trainer demo-model-registry -n colorflow --ignore-not-found
+kubectl delete job demo-trainer model-registry -n colorflow --ignore-not-found
 kubectl apply -k k8s/overlays/local
 kubectl logs job/demo-trainer -n colorflow
 kubectl apply -f k8s/jobs/model-registry/local/job.yaml
-kubectl logs job/demo-model-registry -n colorflow
+kubectl logs job/model-registry -n colorflow
 ```
 
 If you want to watch the run appear in MLflow while the job is running:
@@ -266,15 +266,21 @@ If you want to watch the run appear in MLflow while the job is running:
 kubectl port-forward -n colorflow svc/mlflow 5000:5000
 ```
 
-Then open `http://localhost:5000`, inspect the `demo-training` experiment, and open the `Models` tab to inspect `colorflow-demo-model` and the `champion` alias.
+Then open `http://localhost:5000`, inspect the `colorflow` experiment, and open the `Models` tab to inspect `colorflow-model` and the `champion` alias.
 
 ## Inspect Persistent Storage
 
 The `model-checkpoints` persistent volume claim is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
 
 ```bash
-docker exec colorflow-worker ls -la /var/local-path-provisioner
-docker exec colorflow-worker cat /var/local-path-provisioner/pvc-823f4bfe-04ee-471e-9566-00813734c6d1_colorflow_model-checkpoints/demo-checkpoint.json
+docker exec -it colorflow-worker sh
+cd /var/local-path-provisioner
+# find the most recently modified checkpoint file
+find /var/local-path-provisioner -type f -name "*.pt" -exec ls -t {} + | head -n 1
+
+# to copy the latest checkpoint file to your host machine, exit the container and run:
+exit
+docker cp colorflow-worker:/var/local-path-provisioner/dir/to/gan_latest.pt ~/Downloads/gan_latest.pt
 ```
 
 This direct path is specific to the current local cluster. In this setup, the checkpoint PVC is backed by:

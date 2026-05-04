@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: demo-model-registry
+  name: model-registry
   namespace: colorflow
 spec:
   backoffLimit: 0
@@ -9,7 +9,7 @@ spec:
   template:
     metadata:
       labels:
-        app: demo-model-registry
+        app: model-registry
     spec:
       restartPolicy: Never
       containers:
@@ -22,7 +22,7 @@ spec:
             - name: MLFLOW_EXPERIMENT_NAME
               value: colorflow
             - name: MLFLOW_REGISTERED_MODEL_NAME
-              value: colorflow-demo-model
+              value: colorflow-model
             - name: SELECTION_METRIC
               value: selection_score
           resources:
