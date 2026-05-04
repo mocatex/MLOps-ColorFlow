@@ -14,17 +14,17 @@
 # Deploy Locally
 
 ```bash
+# materialize the trainer dataset on the host first
+# you need GCS credentials set up locally for this to work; see services/trainer/DVC.MD for details
+cd services/trainer
+uv run dvc pull 
+
 # in case you have an old cluster or resources running, clean up first:
 kubectl delete --ignore-not-found -k k8s/overlays/local
 kind delete cluster --name colorflow
 
 # create the local cluster:
 kind create cluster --name colorflow --config k8s/kind/cluster.yaml
-
-# materialize the trainer dataset on the host first
-cd services/trainer
-uv run dvc pull # see services/trainer/DVC.MD for details
-cd ../..
 
 # build all images referenced by the Kubernetes manifests
 docker build -t colorflow-mlflow:local services/mlflow
@@ -38,7 +38,7 @@ kind load docker-image colorflow-mlflow:local --name colorflow
 kind load docker-image colorflow-ui:local --name colorflow
 kind load docker-image colorflow-mlserver:local --name colorflow
 
-# set the context and apply the base resources:
+# set the context and apply the platform resources:
 kubectl cluster-info --context kind-colorflow
 kubectl apply -k k8s/overlays/local
 
@@ -68,7 +68,9 @@ The patch forces the ingress controller onto the `kind` control-plane node, whic
 
 The trainer image now expects `services/trainer/data/images` to already be present. It does not run `dvc pull` inside the container.
 
-Once ingress is ready, open `http://localhost` and the UI will call `http://localhost/v2/models/linear-regression/infer` through the same ingress.
+Use `k8s/overlays/local` when you want MLflow, UI, MLServer, PostgreSQL, services, ingress, and PVCs without automatically starting training.
+
+Once ingress is ready, open `http://localhost` and the UI will call `http://localhost/v2/models/colorflow/infer-image` through the same ingress.
 
 The serving pod resolves `models:/colorflow-model@champion` from MLflow. If no champion model exists yet, the pod stays live but not ready until the training and registry flow completes.
 
@@ -93,7 +95,9 @@ kind delete cluster --name colorflow
 
 # Trigger Training Job
 
-A training jog is automatically triggered when you apply the local overlay. To run the ordered flow manually, use the following script:
+Applying `k8s/overlays/local` only creates the platform resources. Trigger training separately with the trainer job manifest.
+
+To run the ordered flow automatically, use the following script:
 
 ```bash
 ./scripts/run_training_and_register.sh
@@ -102,7 +106,8 @@ A training jog is automatically triggered when you apply the local overlay. To r
 The script does four things in order:
 
 - deletes any old `trainer` and `model-registry` jobs,
-- applies the local overlay so the trainer job is created,
+- applies the local overlay so the platform is up,
+- creates the `trainer` job explicitly,
 - waits for `trainer` to complete and prints its logs,
 - creates `model-registry`, waits for it to complete, and prints its logs.
 
@@ -111,28 +116,37 @@ If you want to run the same steps manually instead of using the script:
 ```bash
 # clean up any old jobs first
 kubectl delete job trainer model-registry -n colorflow --ignore-not-found
-# create the trainer job
-kubectl apply -k k8s/overlays/local 
-# wait for the trainer to complete by watching the logs
-kubectl logs -f job/trainer -n colorflow
-# create the model registry job
-kubectl apply -f k8s/jobs/model-registry/local/job.yaml 
-# wait for the model registry to complete by watching the logs
-kubectl logs -f job/model-registry -n colorflow 
-```
-
-If you changed the trainer or registry code, use this workflow before running the jobs:
-
-```bash
-# materialize trainer data manually on the host
-cd services/trainer
-uv run dvc pull # see services/trainer/DVC.MD for details
-# rebuild the images
-docker build -t colorflow-model-registry:local services/model_registry
-docker build -t colorflow-trainer:local services/trainer
-# load the rebuilt images into kind
+# make sure the platform is up
+kubectl apply -k k8s/overlays/local
+# load the images into kind
 kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
+# create the trainer job
+kubectl apply -f k8s/jobs/trainer/local/job.yaml
+# wait for the trainer to complete
+kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=1200s
+kubectl logs job/trainer -n colorflow
+# create the model registry job
+kubectl apply -f k8s/jobs/model-registry/local/job.yaml 
+# wait for the model registry to complete
+kubectl wait --for=condition=complete job/model-registry -n colorflow --timeout=600s
+kubectl logs job/model-registry -n colorflow 
+```
+
+If your goal is platform first, training later, the intended order is:
+
+```bash
+# start the platform
+kubectl apply -k k8s/overlays/local
+
+# later, when you want to run training
+kubectl delete job trainer model-registry -n colorflow --ignore-not-found
+kind load docker-image colorflow-trainer:local --name colorflow
+kind load docker-image colorflow-model-registry:local --name colorflow
+kubectl apply -f k8s/jobs/trainer/local/job.yaml
+kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=1200s
+kubectl apply -f k8s/jobs/model-registry/local/job.yaml
+kubectl wait --for=condition=complete job/model-registry -n colorflow --timeout=600s
 ```
 
 If you want to watch the run appear in MLflow while the job is running. To access MLflow locally, use port forwarding instead of public ingress:

@@ -11,7 +11,6 @@ resources:
   - mlflow-artifacts-pvc.yaml
   - mlflow-deployment.yaml
   - mlflow-service.yaml
-  - trainer-job.yaml
   - mlserver-deployment.yaml
   - mlserver-service.yaml
   - ui-deployment.yaml
