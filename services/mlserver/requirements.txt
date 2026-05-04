@@ -1,2 +1,5 @@
 fastapi>=0.115,<1
+numpy>=1.26
+scikit-image==0.25.2
+torch>=2.2
 uvicorn>=0.30,<1

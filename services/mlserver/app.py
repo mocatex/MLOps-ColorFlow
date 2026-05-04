@@ -1,12 +1,13 @@
-import math
 import os
 from typing import Any
 
 import mlflow
-import pandas as pd
+import numpy as np
+import torch
 from fastapi import FastAPI, HTTPException
 from mlflow import MlflowClient
 from pydantic import BaseModel
+from skimage.color import lab2rgb
 
 
 class InferenceInput(BaseModel):
@@ -38,11 +39,12 @@ class ChampionModelServer:
         self.tracking_uri = "http://mlflow:5000"
         self.registered_model_name = "colorflow-model"
         self.registered_model_alias = "champion"
-        self.served_model_name = "linear-regression"
+        self.served_model_name = "colorflow"
         self.client: MlflowClient | None = None
         self.model: Any = None
         self.loaded_version: str | None = None
         self.load_error: str | None = None
+        self.device = torch.device(os.environ.get("MODEL_DEVICE", "cpu"))
 
     def configure(self, app: FastAPI) -> None:
         self.tracking_uri = app.state.tracking_uri
@@ -66,7 +68,9 @@ class ChampionModelServer:
                 return
 
             model_uri = f"models:/{self.registered_model_name}/{target_version}"
-            self.model = mlflow.pyfunc.load_model(model_uri)
+            self.model = mlflow.pytorch.load_model(model_uri, dst_path=None)
+            self.model.to(self.device)
+            self.model.eval()
             self.loaded_version = target_version
             self.load_error = None
         except Exception as error:
@@ -75,22 +79,71 @@ class ChampionModelServer:
             self.load_error = str(error)
             raise
 
-    def predict(self, values: list[float]) -> tuple[list[float], str]:
+    def predict(self, l_channel: np.ndarray) -> tuple[np.ndarray, str]:
         self.ensure_model()
-        frame = pd.DataFrame({"x": values})
-        raw_predictions = self.model.predict(frame)
-        predictions = [float(value) for value in raw_predictions]
-        if any(math.isnan(value) or math.isinf(value) for value in predictions):
-            raise RuntimeError("Model returned a non-finite prediction")
+        if self.model is None:
+            raise RuntimeError("Model is not loaded")
 
-        return predictions, self.loaded_version or "unknown"
+        l_tensor = torch.from_numpy(l_channel).to(self.device)
+        with torch.no_grad():
+            ab_tensor = self.model(l_tensor)
+        rgb = lab_to_rgb(l_tensor, ab_tensor)
+
+        if not np.isfinite(rgb).all():
+            raise RuntimeError("Model returned a non-finite RGB image")
+
+        return rgb.astype(np.float32), self.loaded_version or "unknown"
+
+
+def lab_to_rgb(l_tensor: torch.Tensor, ab_tensor: torch.Tensor) -> np.ndarray:
+    l_tensor = (l_tensor.detach().cpu() + 1.0) * 50.0
+    ab_tensor = ab_tensor.detach().cpu() * 128.0
+    lab = torch.cat([l_tensor, ab_tensor], dim=1).permute(0, 2, 3, 1).numpy()
+    rgb = [lab2rgb(sample) for sample in lab]
+    return np.stack(rgb, axis=0)
+
+
+def decode_l_tensor(model_name: str, payload: InferenceRequest) -> np.ndarray:
+    if not payload.inputs:
+        raise HTTPException(status_code=400, detail="At least one input tensor is required")
+
+    tensor = payload.inputs[0]
+    expected_rank = {3, 4}
+    if len(tensor.shape) not in expected_rank:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{model_name}' expects shape [1,H,W] or [N,1,H,W] for the L channel, "
+                f"got {tensor.shape}"
+            ),
+        )
+
+    array = np.asarray(tensor.data, dtype=np.float32)
+    expected_size = int(np.prod(tensor.shape))
+    if array.size != expected_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input data length {array.size} does not match shape {tensor.shape}",
+        )
+
+    array = array.reshape(tensor.shape)
+    if array.ndim == 3:
+        array = np.expand_dims(array, axis=1)
+
+    if array.shape[1] != 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{model_name}' expects a single L channel, got shape {array.shape}",
+        )
+
+    return np.clip(array, -1.0, 1.0)
 
 
 app = FastAPI(title="ColorFlow Inference API")
 app.state.tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 app.state.registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-model")
 app.state.registered_model_alias = os.environ.get("MLFLOW_REGISTERED_MODEL_ALIAS", "champion")
-app.state.served_model_name = os.environ.get("SERVED_MODEL_NAME", "linear-regression")
+app.state.served_model_name = os.environ.get("SERVED_MODEL_NAME", "colorflow")
 server = ChampionModelServer()
 
 
@@ -124,25 +177,24 @@ def infer(model_name: str, payload: InferenceRequest) -> InferenceResponse:
     if model_name != app.state.served_model_name:
         raise HTTPException(status_code=404, detail=f"Unknown model '{model_name}'")
 
-    if not payload.inputs:
-        raise HTTPException(status_code=400, detail="At least one input tensor is required")
-
-    values = [float(value) for value in payload.inputs[0].data]
+    l_channel = decode_l_tensor(model_name, payload)
 
     try:
-        predictions, version = server.predict(values)
+        rgb_batch, version = server.predict(l_channel)
     except Exception as error:
         raise HTTPException(status_code=503, detail=f"Inference failed: {error}") from error
+
+    output = rgb_batch[0] if rgb_batch.shape[0] == 1 else rgb_batch
 
     return InferenceResponse(
         model_name=model_name,
         model_version=version,
         outputs=[
             ResponseOutput(
-                name="predictions",
-                shape=[len(predictions)],
-                datatype="FP64",
-                data=predictions,
+                name="rgb",
+                shape=list(output.shape),
+                datatype="FP32",
+                data=output.reshape(-1).astype(float).tolist(),
             )
         ],
     )
