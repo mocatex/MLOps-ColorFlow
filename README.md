@@ -1,60 +1,48 @@
-# Kubernetes Cluster Scaffold
-
-This folder contains a minimal Kubernetes scaffold for this project.
-
-It now deploys a minimal platform slice and a demo application:
-
-- one namespace,
-- basic resource defaults,
-- one persistent volume claim for model checkpoints,
-- one PostgreSQL deployment for MLflow metadata,
-- one MLflow deployment with a persistent artifact store,
-- one local `kind` cluster configuration,
-- one Kustomize overlay for local development,
-- one Kustomize overlay for GKE.
-
-## Layout
+# Layout
 
 - `kind/cluster.yaml`: local cluster definition for `kind`
 - `base/`: shared Kubernetes resources
 - `overlays/local/`: local settings for `kind`
 - `overlays/gke/`: GKE settings for production hosting
 
-## Local Setup With kind
-
-Prerequisites:
+# Prerequisites
 
 - Docker
 - `kind`
 - `kubectl`
 
-Create the local cluster:
+# Deploy Locally
 
 ```bash
+# in case you have an old cluster or resources running, clean up first:
+kubectl delete --ignore-not-found -k k8s/overlays/local
+kind delete cluster --name colorflow
+
+# create the local cluster:
 kind create cluster --name colorflow --config k8s/kind/cluster.yaml
-```
 
-Set the context and apply the base resources:
+# materialize the trainer dataset on the host first
+cd services/trainer
+uv run dvc pull # see services/trainer/DVC.MD for details
+cd ../..
 
-```bash
+# build all images referenced by the Kubernetes manifests
+docker build -t colorflow-mlflow:local services/mlflow
+docker build -t colorflow-model-registry:local services/model_registry
+docker build -t colorflow-trainer:local services/trainer
+docker build -t colorflow-ui:local services/ui
+docker build -t colorflow-mlserver:local services/mlserver
+
+# load those host images into the new kind cluster
+kind load docker-image colorflow-mlflow:local --name colorflow
+kind load docker-image colorflow-ui:local --name colorflow
+kind load docker-image colorflow-mlserver:local --name colorflow
+
+# set the context and apply the base resources:
 kubectl cluster-info --context kind-colorflow
 kubectl apply -k k8s/overlays/local
-```
 
-Validate:
-
-```bash
-kubectl get ns colorflow
-kubectl get pvc -n colorflow
-kubectl describe limitrange default-resource-defaults -n colorflow
-kubectl get pods -n colorflow
-```
-
-Note: the `model-checkpoints` PVC can remain `Pending` until the first pod mounts it. That is expected when the storage class uses `WaitForFirstConsumer`.
-
-Optional: install NGINX ingress locally so later you can expose the frontend on `localhost`:
-
-```bash
+# install NGINX ingress locally so you can expose the frontend on `localhost`:
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 kubectl patch deployment ingress-nginx-controller \
   -n ingress-nginx \
@@ -64,71 +52,19 @@ kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller \
   --timeout=180s
-```
 
-The patch forces the ingress controller onto the `kind` control-plane node, which is where the local host port mappings live.
-
-
-## GKE Setup
-
-This repo does not provision GKE automatically yet. That is intentional.
-
-GKE needs project-specific values:
-
-- Google Cloud project ID
-- region or zone
-- node sizing
-- billing-enabled project
-
-Create the cluster manually first:
-
-```bash
-gcloud services enable container.googleapis.com
-gcloud container clusters create-auto colorflow \
-  --region europe-west6
-gcloud container clusters get-credentials colorflow --region europe-west6
-kubectl apply -k k8s/overlays/gke
-```
-
-Validate:
-
-```bash
+# validate:
 kubectl get ns colorflow
 kubectl get pvc -n colorflow
+kubectl describe limitrange default-resource-defaults -n colorflow
+kubectl get pods -n colorflow
 ```
 
-The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
+`kubectl apply -k k8s/overlays/local` alone is not enough after `kind delete cluster`, because deleting the cluster also removes all previously loaded local images.
 
-## Demo Apps
+Note: the `model-checkpoints` PVC can remain `Pending` until the first pod mounts it. That is expected when the storage class uses `WaitForFirstConsumer`.
 
-This repo now includes a minimal end-to-end demo:
-
-- `services/model_registry/`: registration script that selects the best run and creates a model version in MLflow Model Registry
-- `services/trainer/`: one-shot training script that logs a single MLflow run
-- `services/ui/`: static frontend served by NGINX
-- `services/mlserver/`: minimal inference API that serves the MLflow `champion` model alias
-
-### Local build and deploy flow
-
-```bash
-# materialize the training dataset manually before building the trainer image
-cd services/trainer
-uv run dvc pull # see services/trainer/DVC.MD for details
-# build images
-docker build -t colorflow-mlflow:local services/mlflow
-docker build -t colorflow-model-registry:local services/model_registry
-docker build -t colorflow-trainer:local services/trainer
-docker build -t colorflow-ui:local services/ui
-docker build -t colorflow-mlserver:local services/mlserver
-# load images into kind cluster
-kind load docker-image colorflow-mlflow:local --name colorflow
-kind load docker-image colorflow-model-registry:local --name colorflow
-kind load docker-image colorflow-trainer:local --name colorflow
-kind load docker-image colorflow-ui:local --name colorflow
-kind load docker-image colorflow-mlserver:local --name colorflow
-# apply the local overlay to create the resources
-kubectl apply -k k8s/overlays/local
-```
+The patch forces the ingress controller onto the `kind` control-plane node, which is where the local host port mappings live.
 
 The trainer image now expects `services/trainer/data/images` to already be present. It does not run `dvc pull` inside the container.
 
@@ -136,86 +72,54 @@ Once ingress is ready, open `http://localhost` and the UI will call `http://loca
 
 The serving pod resolves `models:/colorflow-model@champion` from MLflow. If no champion model exists yet, the pod stays live but not ready until the training and registry flow completes.
 
-### Access MLflow locally
 
-To access MLflow locally, use port forwarding instead of public ingress:
-
-```bash
-kubectl port-forward -n colorflow svc/mlflow 5000:5000
-```
-
-Then open `http://localhost:5000`.
-
-PostgreSQL is kept internal only. MLflow uses PostgreSQL for metadata and the `mlflow-artifacts` persistent volume claim for artifacts.
-
-### Inspect the demo training job
+# List all Jobs or Pods
 
 ```bash
+# to see the jobs:
 kubectl get jobs -n colorflow
-kubectl logs job/trainer -n colorflow
-kubectl logs job/model-registry -n colorflow
+# to see the pods created by the jobs:
+kubectl get pods -n colorflow -o wide
 ```
 
-To inspect a running training job in more detail:
+# Shutdown
 
 ```bash
-# job-level status
-kubectl get job trainer -n colorflow
-kubectl describe job trainer -n colorflow
-
-# pod-level status for the trainer job
-kubectl get pods -n colorflow -l job-name=trainer
-kubectl describe pod -n colorflow -l job-name=trainer
-
-# stream live trainer logs
-kubectl logs -f job/trainer -n colorflow
-
-# watch status changes live
-kubectl get job trainer -n colorflow -w
-kubectl get pods -n colorflow -l job-name=trainer -w
-```
-
-### Run a smoke test
-
-Verify before running training, print the resolved config and exit:
-
-```bash
-python train.py tracking=noop --cfg job
-```
-
-To get a shell inside the container:
-
-```bash
-docker compose -f services/trainer/docker-compose.yml run --rm --entrypoint sh training
-```
-
-Then inside the container you should run:
-
-```bash
-python train.py tracking=noop training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
-```
-
-If you want to log to MLflow, use the following command instead:
-
-```bash
-export MLFLOW_TRACKING_URI=http://host.docker.internal:5000
-python train.py training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
-```
-
-## Shutdown
-
-1. Stop the deployed services but keep Kubernetes running:
-
-```sh
+# Stop the deployed services but keep Kubernetes running:
 kubectl delete --ignore-not-found -k k8s/overlays/local
-```
-2. Tear everything down, including the local cluster:
-
-```sh
+# Tear everything down, including the local cluster:
 kind delete cluster --name colorflow
 ```
 
-## Trigger Training Job
+# Trigger Training Job
+
+A training jog is automatically triggered when you apply the local overlay. To run the ordered flow manually, use the following script:
+
+```bash
+./scripts/run_training_and_register.sh
+```
+
+The script does four things in order:
+
+- deletes any old `trainer` and `model-registry` jobs,
+- applies the local overlay so the trainer job is created,
+- waits for `trainer` to complete and prints its logs,
+- creates `model-registry`, waits for it to complete, and prints its logs.
+
+If you want to run the same steps manually instead of using the script:
+
+```bash
+# clean up any old jobs first
+kubectl delete job trainer model-registry -n colorflow --ignore-not-found
+# create the trainer job
+kubectl apply -k k8s/overlays/local 
+# wait for the trainer to complete by watching the logs
+kubectl logs -f job/trainer -n colorflow
+# create the model registry job
+kubectl apply -f k8s/jobs/model-registry/local/job.yaml 
+# wait for the model registry to complete by watching the logs
+kubectl logs -f job/model-registry -n colorflow 
+```
 
 If you changed the trainer or registry code, use this workflow before running the jobs:
 
@@ -231,44 +135,59 @@ kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
 ```
 
-Then run the ordered flow:
-
-```bash
-./scripts/run_training_and_register.sh
-```
-
-The script assumes the current `colorflow-trainer:local` image was built after you manually materialized `services/trainer/data/images`.
-
-In other words, the trainer no longer runs `dvc pull` inside the container. Data preparation is a manual host-side step, and the pulled `services/trainer/data/images` directory is baked into the trainer image at build time.
-
-The script does four things in order:
-
-- deletes any old `demo-trainer` and `model-registry` jobs,
-- applies the local overlay so the trainer job is created,
-- waits for `demo-trainer` to complete and prints its logs,
-- creates `model-registry`, waits for it to complete, and prints its logs.
-
-Because the serving layer resolves the `champion` alias from MLflow, it will start serving the newly registered best model after the alias changes.
-
-If you want to run the same steps manually instead of using the script:
-
-```bash
-kubectl delete job demo-trainer model-registry -n colorflow --ignore-not-found
-kubectl apply -k k8s/overlays/local
-kubectl logs job/demo-trainer -n colorflow
-kubectl apply -f k8s/jobs/model-registry/local/job.yaml
-kubectl logs job/model-registry -n colorflow
-```
-
-If you want to watch the run appear in MLflow while the job is running:
+If you want to watch the run appear in MLflow while the job is running. To access MLflow locally, use port forwarding instead of public ingress:
 
 ```bash
 kubectl port-forward -n colorflow svc/mlflow 5000:5000
+# then open `http://localhost:5000`
 ```
 
-Then open `http://localhost:5000`, inspect the `colorflow` experiment, and open the `Models` tab to inspect `colorflow-model` and the `champion` alias.
+## Inspect the training job
 
-## Inspect Persistent Storage
+To inspect a running training job in more detail:
+
+```bash
+# to see the pods created by the jobs:
+kubectl logs job/trainer -n colorflow
+
+# job-level status
+kubectl get job trainer -n colorflow
+kubectl describe job trainer -n colorflow
+
+# pod-level status for the trainer job
+kubectl get pods -n colorflow -l job-name=trainer
+kubectl describe pod -n colorflow -l job-name=trainer
+
+# stream live trainer logs
+kubectl logs -f job/trainer -n colorflow
+
+# watch status changes live
+kubectl get job trainer -n colorflow -w
+kubectl get pods -n colorflow -l job-name=trainer -w
+
+# to see the model registry logs:
+kubectl logs job/model-registry -n colorflow
+```
+
+## Run a smoke test
+
+Verify before running training, print the resolved config and exit:
+
+```bash
+python train.py tracking=noop --cfg job
+
+# To get a shell inside the container:
+docker compose -f services/trainer/docker-compose.yml run --rm --entrypoint sh training
+
+# then inside the container you should run:
+python train.py tracking=noop training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
+
+# if you want to log to MLflow, use the following command instead:
+export MLFLOW_TRACKING_URI=http://host.docker.internal:5000
+python train.py training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
+```
+
+# Inspect Persistent Storage
 
 The `model-checkpoints` persistent volume claim is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
 
@@ -298,3 +217,29 @@ If you want to run it again after it completes:
 ```
 
 The delete can fail with `NotFound` because the job is configured with `ttlSecondsAfterFinished: 300`, so Kubernetes removes it automatically about five minutes after it completes.
+
+# Google Kubernetes Engine Setup
+
+This repo does not provision GKE automatically yet. That is intentional.
+
+GKE needs project-specific values:
+
+- Google Cloud project ID
+- region or zone
+- node sizing
+- billing-enabled project
+
+Create the cluster manually first:
+
+```bash
+gcloud services enable container.googleapis.com
+gcloud container clusters create-auto colorflow --region europe-west6
+gcloud container clusters get-credentials colorflow --region europe-west6
+kubectl apply -k k8s/overlays/gke
+
+# Validate:
+kubectl get ns colorflow
+kubectl get pvc -n colorflow
+```
+
+The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
