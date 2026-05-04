@@ -1,13 +1,16 @@
 import os
+from io import BytesIO
 from typing import Any
 
 import mlflow
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from mlflow import MlflowClient
+from PIL import Image
 from pydantic import BaseModel
-from skimage.color import lab2rgb
+from skimage.color import lab2rgb, rgb2lab
 
 
 class InferenceInput(BaseModel):
@@ -45,6 +48,7 @@ class ChampionModelServer:
         self.loaded_version: str | None = None
         self.load_error: str | None = None
         self.device = torch.device(os.environ.get("MODEL_DEVICE", "cpu"))
+        self.image_size = int(os.environ.get("MODEL_IMAGE_SIZE", "256"))
 
     def configure(self, app: FastAPI) -> None:
         self.tracking_uri = app.state.tracking_uri
@@ -101,6 +105,26 @@ def lab_to_rgb(l_tensor: torch.Tensor, ab_tensor: torch.Tensor) -> np.ndarray:
     lab = torch.cat([l_tensor, ab_tensor], dim=1).permute(0, 2, 3, 1).numpy()
     rgb = [lab2rgb(sample) for sample in lab]
     return np.stack(rgb, axis=0)
+
+
+def image_bytes_to_l_tensor(image_bytes: bytes, image_size: int) -> np.ndarray:
+    try:
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Invalid image upload: {error}") from error
+
+    image = image.resize((image_size, image_size))
+    rgb = np.asarray(image, dtype=np.float32)
+    lab = rgb2lab(rgb).astype(np.float32)
+    l_channel = (lab[..., 0] / 50.0) - 1.0
+    return l_channel[np.newaxis, np.newaxis, ...]
+
+
+def rgb_batch_to_png_bytes(rgb_batch: np.ndarray) -> bytes:
+    rgb = np.clip(rgb_batch[0] * 255.0, 0, 255).astype(np.uint8)
+    buffer = BytesIO()
+    Image.fromarray(rgb).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def decode_l_tensor(model_name: str, payload: InferenceRequest) -> np.ndarray:
@@ -197,4 +221,31 @@ def infer(model_name: str, payload: InferenceRequest) -> InferenceResponse:
                 data=output.reshape(-1).astype(float).tolist(),
             )
         ],
+    )
+
+
+@app.post("/v2/models/{model_name}/infer-image")
+async def infer_image(model_name: str, image: UploadFile = File(...)) -> Response:
+    if model_name != app.state.served_model_name:
+        raise HTTPException(status_code=404, detail=f"Unknown model '{model_name}'")
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded image was empty")
+
+    l_channel = image_bytes_to_l_tensor(image_bytes, server.image_size)
+
+    try:
+        rgb_batch, version = server.predict(l_channel)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail=f"Inference failed: {error}") from error
+
+    return Response(
+        content=rgb_batch_to_png_bytes(rgb_batch),
+        media_type="image/png",
+        headers={
+            "X-Model-Name": app.state.registered_model_name,
+            "X-Model-Version": version,
+            "X-Served-Model": model_name,
+        },
     )
