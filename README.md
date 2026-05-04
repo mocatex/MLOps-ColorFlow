@@ -152,7 +152,7 @@ PostgreSQL is kept internal only. MLflow uses PostgreSQL for metadata and the `m
 
 ```bash
 kubectl get jobs -n colorflow
-kubectl logs job/demo-trainer -n colorflow
+kubectl logs job/trainer -n colorflow
 kubectl logs job/model-registry -n colorflow
 ```
 
@@ -160,19 +160,19 @@ To inspect a running training job in more detail:
 
 ```bash
 # job-level status
-kubectl get job demo-trainer -n colorflow
-kubectl describe job demo-trainer -n colorflow
+kubectl get job trainer -n colorflow
+kubectl describe job trainer -n colorflow
 
 # pod-level status for the trainer job
-kubectl get pods -n colorflow -l job-name=demo-trainer
-kubectl describe pod -n colorflow -l job-name=demo-trainer
+kubectl get pods -n colorflow -l job-name=trainer
+kubectl describe pod -n colorflow -l job-name=trainer
 
 # stream live trainer logs
-kubectl logs -f job/demo-trainer -n colorflow
+kubectl logs -f job/trainer -n colorflow
 
 # watch status changes live
-kubectl get job demo-trainer -n colorflow -w
-kubectl get pods -n colorflow -l job-name=demo-trainer -w
+kubectl get job trainer -n colorflow -w
+kubectl get pods -n colorflow -l job-name=trainer -w
 ```
 
 ### Run a smoke test

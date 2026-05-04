@@ -25,7 +25,7 @@ spec:
             - name: MLFLOW_REGISTERED_MODEL_ALIAS
               value: champion
             - name: SERVED_MODEL_NAME
-              value: linear-regression
+              value: colorflow
           volumeMounts:
             - name: mlflow-artifacts
               mountPath: /mlflow/artifacts
@@ -47,10 +47,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 1Gi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 2Gi
       volumes:
         - name: mlflow-artifacts
           persistentVolumeClaim:

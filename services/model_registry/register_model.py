@@ -2,6 +2,7 @@ import os
 import time
 
 import mlflow
+import requests
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException  # type: ignore[import-not-found]
 
@@ -13,7 +14,28 @@ def ensure_registered_model(client: MlflowClient, model_name: str) -> None:
         client.get_registered_model(model_name)
 
 
-def select_best_run(client: MlflowClient, experiment_id: str, metric_name: str):
+def run_has_artifact(tracking_uri: str, run_id: str, artifact_path: str) -> bool:
+    try:
+        response = requests.get(
+            f"{tracking_uri.rstrip('/')}/api/2.0/mlflow/artifacts/list",
+            params={"run_id": run_id, "path": ""},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        return False
+
+    artifacts = response.json().get("files", [])
+    return any(artifact.get("path") == artifact_path for artifact in artifacts)
+
+
+def select_best_run(
+    client: MlflowClient,
+    tracking_uri: str,
+    experiment_id: str,
+    metric_name: str,
+    artifact_path: str,
+):
     runs = client.search_runs(
         experiment_ids=[experiment_id],
         filter_string="attributes.status = 'FINISHED'",
@@ -27,6 +49,9 @@ def select_best_run(client: MlflowClient, experiment_id: str, metric_name: str):
     best_metric_value = None
 
     for run in runs:
+        if not run_has_artifact(tracking_uri, run.info.run_id, artifact_path):
+            continue
+
         metrics = run.data.metrics
 
         if metric_name in metrics:
@@ -80,7 +105,13 @@ def main() -> None:
     if experiment is None:
         raise RuntimeError(f"Experiment '{experiment_name}' does not exist")
 
-    best_run, selected_metric_name, metric_value = select_best_run(client, experiment.experiment_id, metric_name)
+    best_run, selected_metric_name, metric_value = select_best_run(
+        client,
+        tracking_uri,
+        experiment.experiment_id,
+        metric_name,
+        model_artifact_path,
+    )
     run_id = best_run.info.run_id
 
     ensure_registered_model(client, model_name)
