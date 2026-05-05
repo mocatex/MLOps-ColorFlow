@@ -3,10 +3,16 @@ kind: Ingress
 metadata:
   name: colorflow
   namespace: colorflow
+  annotations:
+    kubernetes.io/ingress.class: gce
 spec:
+  defaultBackend:
+    service:
+      name: ui
+      port:
+        number: 80
   rules:
-    - host: colorflow.example.com
-      http:
+    - http:
         paths:
           - path: /v2
             pathType: Prefix

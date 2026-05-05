@@ -13,6 +13,7 @@ spec:
       labels:
         app: mlflow
     spec:
+      serviceAccountName: colorflow-runtime
       containers:
         - name: mlflow
           image: colorflow-mlflow
@@ -23,7 +24,7 @@ spec:
             - --host=0.0.0.0
             - --port=5000
             - --backend-store-uri=postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)
-            - --default-artifact-root=/mlflow/artifacts
+            - --default-artifact-root=$(MLFLOW_ARTIFACT_ROOT)
           ports:
             - containerPort: 5000
               name: http
@@ -43,6 +44,8 @@ spec:
                 secretKeyRef:
                   name: mlflow-secrets
                   key: postgres-db
+            - name: MLFLOW_ARTIFACT_ROOT
+              value: /mlflow/artifacts
           volumeMounts:
             - name: mlflow-artifacts
               mountPath: /mlflow/artifacts

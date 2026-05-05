@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-registry
+  namespace: colorflow
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: model-registry
+    spec:
+      serviceAccountName: colorflow-runtime
+      restartPolicy: Never
+      containers:
+        - name: registry
+          image: colorflow-model-registry
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: colorflow
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: colorflow-model
+            - name: SELECTION_METRIC
+              value: selection_score
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

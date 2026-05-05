@@ -1,4 +1,5 @@
-FROM colorflow-mlflow:local
+ARG BASE_IMAGE=colorflow-mlflow:local
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 

@@ -11,10 +11,11 @@ spec:
       labels:
         app: model-registry
     spec:
+      serviceAccountName: colorflow-runtime
       restartPolicy: Never
       containers:
         - name: registry
-          image: colorflow-model-registry:local
+          image: colorflow-model-registry
           imagePullPolicy: IfNotPresent
           env:
             - name: MLFLOW_TRACKING_URI

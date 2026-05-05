@@ -13,6 +13,7 @@ spec:
       labels:
         app: mlserver
     spec:
+      serviceAccountName: colorflow-runtime
       containers:
         - name: mlserver
           image: colorflow-mlserver

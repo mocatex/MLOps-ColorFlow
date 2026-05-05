@@ -4,8 +4,8 @@
 #   command: ["train.py"]                       # default
 #   command: ["tune.py", "--n-trials", "20"]
 #
-# Training data must be materialized manually before building the image
-# (for example via `uv run dvc pull`). The image then bakes in `data/images`.
+# Training data can either be baked into the image ahead of time
+# (for example via `uv run dvc pull`) or pulled at runtime by the entrypoint.
 
 FROM python:3.12-slim
 
@@ -42,16 +42,12 @@ COPY src/ src/
 COPY configs/ configs/
 COPY train.py tune.py ./
 
-# DVC metadata + materialized dataset. The cache and config.local are excluded
-# by .dockerignore, so this only ships tracked metadata and pulled data.
+# DVC metadata + optional materialized dataset. The cache and config.local are
+# excluded by .dockerignore, so this only ships tracked metadata and any pulled data.
 COPY .dvc/ .dvc/
 COPY .dvcignore ./
 COPY data/ data/
-
-RUN if [ ! -d data/images ] || [ -z "$(ls -A data/images 2>/dev/null)" ]; then \
-            echo "data/images is empty. Run 'uv run dvc pull' manually before building the trainer image." >&2; \
-            exit 1; \
-        fi
+RUN mkdir -p data/images
 
 # Runtime entrypoint: fail fast if the expected dataset is missing.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh

@@ -1,7 +1,5 @@
-<<<<<<< HEAD
 # Kubernetes Cluster Scaffold
 
-<<<<<<< HEAD
 ```bash
 # create python environment and install dependencies
 uv sync
@@ -35,7 +33,7 @@ one-shot HPO
 
 Override Hydra config from the CLI:
 > docker compose run --rm training python train.py training.epochs=2 data.batch_size=8
-=======
+
 This folder contains a minimal Kubernetes scaffold for this project.
 
 It now deploys a minimal platform slice and a demo application:
@@ -49,10 +47,7 @@ It now deploys a minimal platform slice and a demo application:
 - one Kustomize overlay for local development,
 - one Kustomize overlay for GKE.
 
-## Layout
-=======
 # Layout
->>>>>>> b16e984 (fixes)
 
 - `kind/cluster.yaml`: local cluster definition for `kind`
 - `base/`: shared Kubernetes resources
@@ -177,15 +172,13 @@ kubectl apply -k k8s/overlays/local
 kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
 
-# create the trainer job
-kubectl apply -f k8s/jobs/trainer/local/job.yaml
+# create both jobs from the local job overlay
+kubectl apply -k k8s/jobs/local
 # wait for the trainer to complete
 kubectl wait --for=condition=complete job/trainer -n colorflow
 # or to watch it live:
 kubectl logs -f job/trainer -n colorflow
 
-# create the model registry job
-kubectl apply -f k8s/jobs/model-registry/local/job.yaml 
 # wait for the model registry to complete
 kubectl wait --for=condition=complete job/model-registry -n colorflow
 # or to watch it live:
@@ -284,9 +277,6 @@ If you want to run it again after it completes:
 ```
 
 The delete can fail with `NotFound` because the job is configured with `ttlSecondsAfterFinished: 300`, so Kubernetes removes it automatically about five minutes after it completes.
-<<<<<<< HEAD
->>>>>>> 3982e25 (smoke test)
-=======
 
 # Google Kubernetes Engine Setup
 
@@ -295,9 +285,12 @@ This repo does not provision GKE automatically yet. That is intentional.
 GKE needs project-specific values:
 
 - Google Cloud project ID
+- Google Cloud project number
 - region or zone
 - node sizing
 - billing-enabled project
+- a GCS bucket for MLflow artifacts
+- a Google service account for Workload Identity
 
 Create the cluster manually first:
 
@@ -305,12 +298,100 @@ Create the cluster manually first:
 gcloud services enable container.googleapis.com
 gcloud container clusters create-auto colorflow --region europe-west6
 gcloud container clusters get-credentials colorflow --region europe-west6
+
+# either set a default project once...
+gcloud config set project <your-project-id>
+
+# ...or create Artifact Registry with an explicit project
+gcloud artifacts repositories create colorflow \
+  --project=<your-project-id> \
+  --repository-format=docker \
+  --location=europe-west6 \
+  --description="ColorFlow container images"
+
+# copy the example config and fill in your real values once
+cp scripts/gke.env.example scripts/gke.env
+
+# configure all GKE overlay placeholders from that one file
+./scripts/configure_gke_overlay.sh scripts/gke.env
+
+# build and push all service images to Artifact Registry using the same values
+set -a
+. ./scripts/gke.env
+set +a
+./scripts/build_and_push_gke_images.sh
+
+# deploy the platform only
 kubectl apply -k k8s/overlays/gke
 
 # Validate:
 kubectl get ns colorflow
 kubectl get pvc -n colorflow
+kubectl get ingress -n colorflow
+```
+
+The GKE overlay now targets the native `gce` ingress class instead of `ingress-nginx`.
+
+If `APP_HOST` is empty, the generated ingress omits the host match and you can call the app directly through the load balancer IP. If you later add a real DNS host, set `APP_HOST` and rerun `./scripts/configure_gke_overlay.sh`.
+
+The public entry point on GKE is the `Ingress` address, not any of the `ClusterIP` service addresses. Wait for:
+
+```bash
+kubectl get ingress -n colorflow -w
+```
+
+and then open:
+
+```text
+http://<INGRESS_ADDRESS>/
+```
+
+If the address appears but the browser still resets or hangs for a short time, GKE is usually still finishing load balancer health checks. Give it another minute or two and retry.
+
+`./scripts/configure_gke_overlay.sh` writes the GKE overlay files from one configuration source. The GKE overlay assumes MLflow and MLServer will use object storage for model artifacts instead of sharing the local `mlflow-artifacts` PVC.
+
+The GKE path also assumes Workload Identity for GCS access. Configure `GCP_SERVICE_ACCOUNT_EMAIL` in `scripts/gke.env`, then grant that service account access to the artifact bucket and dataset bucket.
+
+The `colorflow-runtime` Kubernetes service account is used by MLflow, MLServer, the trainer job, and the model-registry job. On GKE, bind it to your Google service account before you deploy. At a minimum, that Google service account needs storage object access to the buckets used by MLflow artifacts and DVC data.
+
+The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image.
+
+Training and model registration are on-demand on GKE. Applying `k8s/overlays/gke` starts the platform only. Trigger jobs explicitly when you want them:
+
+```bash
+# start a training run
+kubectl apply -k k8s/jobs/gke/trainer
+
+# after training completes, register the best model
+kubectl apply -k k8s/jobs/gke/model-registry
 ```
 
 The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
->>>>>>> b16e984 (fixes)
+
+
+# Workflow
+
+
+```bash
+# Deploy platform only:
+kubectl apply -k k8s/overlays/gke
+
+# Trigger training only when you want it:
+kubectl apply -k k8s/jobs/gke/trainer
+
+# Trigger model registration only after training completes:
+kubectl apply -k k8s/jobs/gke/model-registry
+
+# stop the training and model registry jobs if they are still running:
+kubectl delete job trainer model-registry -n colorflow --ignore-not-found
+```
+
+
+# Serve UI from GKE
+
+```bash
+# serve the ui service from the cluster. 
+kubectl port-forward -n colorflow svc/ui 8080:80
+# then open `http://localhost:8080`
+# localhost:8080 is the cluster UI service, not your local mlserver.
+```
