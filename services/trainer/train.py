@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import hydra
-import torch
 from omegaconf import DictConfig, OmegaConf
 from torch import nn, optim
 
@@ -30,6 +29,15 @@ def run(cfg: DictConfig) -> float:
 
     config_snapshot = OmegaConf.to_container(cfg, resolve=True)
     train_loader, val_loader = build_dataloaders(cfg.data, seed=cfg.seed)
+    print(
+        f"training on {device.type}: "
+        f"{len(train_loader)} train batches, {len(val_loader)} val batches"
+    )
+    if device.type == "cpu" and len(train_loader) >= 100:
+        print(
+            "warning: no CUDA device detected; the default GAN config runs on CPU "
+            "and the first batch can take a long time to finish."
+        )
 
     with build_tracker(cfg.tracking) as tracker:
         tracker.set_tags({"stage": "train", "model": "pix2pix"})
