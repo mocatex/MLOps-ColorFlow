@@ -118,42 +118,41 @@ If you want to run the same steps manually instead of using the script:
 kubectl delete job trainer model-registry -n colorflow --ignore-not-found
 # make sure the platform is up
 kubectl apply -k k8s/overlays/local
+
 # load the images into kind
 kind load docker-image colorflow-model-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
+
 # create the trainer job
 kubectl apply -f k8s/jobs/trainer/local/job.yaml
 # wait for the trainer to complete
-kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=1200s
-kubectl logs job/trainer -n colorflow
+kubectl wait --for=condition=complete job/trainer -n colorflow
+# or to watch it live:
+kubectl logs -f job/trainer -n colorflow
+
 # create the model registry job
 kubectl apply -f k8s/jobs/model-registry/local/job.yaml 
 # wait for the model registry to complete
-kubectl wait --for=condition=complete job/model-registry -n colorflow --timeout=600s
-kubectl logs job/model-registry -n colorflow 
+kubectl wait --for=condition=complete job/model-registry -n colorflow
+# or to watch it live:
+kubectl logs -f job/model-registry -n colorflow 
 ```
 
-If your goal is platform first, training later, the intended order is:
 
-```bash
-# start the platform
-kubectl apply -k k8s/overlays/local
-
-# later, when you want to run training
-kubectl delete job trainer model-registry -n colorflow --ignore-not-found
-kind load docker-image colorflow-trainer:local --name colorflow
-kind load docker-image colorflow-model-registry:local --name colorflow
-kubectl apply -f k8s/jobs/trainer/local/job.yaml
-kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=1200s
-kubectl apply -f k8s/jobs/model-registry/local/job.yaml
-kubectl wait --for=condition=complete job/model-registry -n colorflow --timeout=600s
-```
 
 If you want to watch the run appear in MLflow while the job is running. To access MLflow locally, use port forwarding instead of public ingress:
 
 ```bash
 kubectl port-forward -n colorflow svc/mlflow 5000:5000
 # then open `http://localhost:5000`
+```
+
+Check, whether the Python process is alive, how much memory it uses:
+
+```bash
+kubectl exec -n colorflow trainer-t5stt -- sh -lc '
+  echo "status:";
+  grep -E "State|VmRSS|VmSize|Threads|voluntary_ctxt_switches|nonvoluntary_ctxt_switches" /proc/1/status'
 ```
 
 ## Inspect the training job

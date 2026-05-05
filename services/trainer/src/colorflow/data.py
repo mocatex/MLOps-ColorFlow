@@ -4,6 +4,7 @@ import glob
 from pathlib import Path
 
 import numpy as np
+import torch
 from PIL import Image
 from skimage.color import rgb2lab
 from torch.utils.data import DataLoader, Dataset
@@ -103,19 +104,20 @@ def build_dataloaders(cfg, seed=42):
 
     train_data = ImageDataset(paths=train_paths, image_size=image_size, train=True)
     valid_data = ImageDataset(paths=val_paths, image_size=image_size, train=False)
+    pin_memory = bool(cfg.pin_memory and torch.cuda.is_available())
 
     train_loader = DataLoader(
         train_data,
         batch_size=cfg.batch_size,
         shuffle=True,
-        pin_memory=cfg.pin_memory,
+        pin_memory=pin_memory,
         num_workers=cfg.num_workers,
     )
     valid_loader = DataLoader(
         valid_data,
         batch_size=cfg.batch_size,
         shuffle=False,
-        pin_memory=cfg.pin_memory,
+        pin_memory=pin_memory,
         num_workers=cfg.num_workers,
     )
     return train_loader, valid_loader
