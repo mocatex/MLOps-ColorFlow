@@ -231,89 +231,20 @@ kubectl get pods -n colorflow -l job-name=trainer -w
 kubectl logs job/registry -n colorflow
 ```
 
-## Run a smoke test
-
-Verify before running training, print the resolved config and exit:
-
-```bash
-python train.py tracking=noop --cfg job
-
-# To get a shell inside the container:
-docker compose -f services/trainer/docker-compose.yml run --rm --entrypoint sh training
-
-# then inside the container you should run:
-python train.py tracking=noop training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
-
-# if you want to log to MLflow, use the following command instead:
-export MLFLOW_TRACKING_URI=http://host.docker.internal:5000
-python train.py training.epochs=10 training.pretrain.enabled=false data.external_data_size=20 data.train_size=16 data.batch_size=2 data.image_size_1=256 data.image_size_2=256 data.pin_memory=false model.generator.use_pretrained_backbone=false
-```
-
-# Inspect Persistent Storage
-
-In the local `kind` cluster, trainer outputs and raw checkpoints are written under `/outputs` on the shared `mlflow-artifacts` PVC. Raw checkpoint files end up under `/outputs/checkpoints` inside the trainer pod.
-
-That PVC is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
-
-```bash
-docker exec -it colorflow-worker sh
-cd /var/local-path-provisioner
-# find the most recently modified checkpoint file
-find /var/local-path-provisioner -type f -name "*.pt" -exec ls -t {} + | head -n 1
-
-# to copy the latest checkpoint file to your host machine, exit the container and run:
-exit
-docker cp colorflow-worker:/var/local-path-provisioner/dir/to/gan_latest.pt ~/Downloads/gan_latest.pt
-```
-
-This direct path is specific to the current local cluster. In this setup, the shared outputs PVC is backed by:
-
-```bash
-/var/local-path-provisioner/pvc-<uid>_colorflow_mlflow-artifacts
-```
-
-On GKE, MLflow artifacts go to `gs://mlops-flow` and trainer checkpoints go to `gs://mlops-checkpoints` through a bucket-backed `model-checkpoints` PVC mounted at `/checkpoints` for the trainer job.
-
-If you want to run it again after it completes:
-
-```bash
-./scripts/run_training_and_register.sh
-```
-
-The delete can fail with `NotFound` because the job is configured with `ttlSecondsAfterFinished: 300`, so Kubernetes removes it automatically about five minutes after it completes.
-
 # Google Kubernetes Engine Setup
-
-This repo does not provision GKE automatically yet. That is intentional.
-
-GKE needs project-specific values:
-
-- Google Cloud project ID
-- Google Cloud project number
-- region or zone
-- node sizing
-- billing-enabled project
-- the `gs://mlops-flow` bucket for MLflow artifacts
-- the `gs://mlops-checkpoints` bucket for raw trainer checkpoints
-- the DVC data bucket
-- a Google service account for Workload Identity
 
 Create the cluster manually first:
 
 ```bash
+# creata and configure your GCP project and GKE cluster (if you haven't already):
 gcloud services enable container.googleapis.com
 gcloud container clusters create-auto colorflow --region europe-west6
 gcloud container clusters get-credentials colorflow --region europe-west6
 
-# either set a default project once...
-gcloud config set project <your-project-id>
-
-# ...or create Artifact Registry with an explicit project
-gcloud artifacts repositories create colorflow \
-  --project=<your-project-id> \
-  --repository-format=docker \
-  --location=europe-west6 \
-  --description="ColorFlow container images"
+# check if you have set the project 
+gcloud config get project
+# if not, set it to the correct one
+gcloud config set project mlops-colorflow
 
 # copy the example config and fill in your real values once
 cp scripts/gke.env.example scripts/gke.env
@@ -322,35 +253,29 @@ cp scripts/gke.env.example scripts/gke.env
 ./scripts/configure_gke_overlay.sh scripts/gke.env
 
 # build and push all service images to Artifact Registry using the same values
-set -a
+set -a # start exporting all variables to the environment
 . ./scripts/gke.env
-set +a
+# optionally, use a tag to version your images instead of `latest`
+export TAG=mlserver-startup-fix-20260506
+set +a # stop exporting all variables
 ./scripts/build_and_push_gke_images.sh
 
-# deploy the platform only
+# deploy the platform to GKE (without training or registry jobs):
 kubectl apply -k k8s/overlays/gke
 
 # Validate:
 kubectl get ns colorflow
 kubectl get pvc -n colorflow
 kubectl get ingress -n colorflow
+kubectl get ingress -n colorflow -w # watch it
+# then open http://<ADDRESS>/
 ```
 
 The GKE overlay now targets the native `gce` ingress class instead of `ingress-nginx`.
 
 If `APP_HOST` is empty, the generated ingress omits the host match and you can call the app directly through the load balancer IP. If you later add a real DNS host, set `APP_HOST` and rerun `./scripts/configure_gke_overlay.sh`.
 
-The public entry point on GKE is the `Ingress` address, not any of the `ClusterIP` service addresses. Wait for:
-
-```bash
-kubectl get ingress -n colorflow -w
-```
-
-and then open:
-
-```text
-http://<INGRESS_ADDRESS>/
-```
+The public entry point on GKE is the `Ingress` address, not any of the `ClusterIP` service addresses. 
 
 If the address appears but the browser still resets or hangs for a short time, GKE is usually still finishing load balancer health checks. Give it another minute or two and retry.
 
@@ -377,7 +302,67 @@ kubectl get jobs -n colorflow
 kubectl get pods -n colorflow -o wide
 ```
 
+# Promote a local champion to GKE
+
+If the current `champion` model was trained locally, mirror its files to GCS and promote it into the GKE MLflow registry like this:
+
+```bash
+# assuming you first ran locally:
+uv run train.py
+uv run register.py
+
+# mirror the local model files into GCS
+gcloud storage rsync --recursive storage/mlops-flow gs://mlops-flow
+
+# optional: keep the raw checkpoint bucket in sync too
+gcloud storage cp storage/mlops-checkpoints/gan_best.pt gs://mlops-checkpoints/gan_best.pt
+
+# expose GKE MLflow locally, then promote the mirrored artifact into the GKE registry
+# open a tunnel to the mlflow service in GKE
+kubectl port-forward -n colorflow svc/mlflow 5002:5000
+# then in another terminal, promote the local champion into the GKE registry:
+uv run python services/registry/promote_local_model.py
+
+# then restart mlserver to pick up the new champion model:
+kubectl rollout restart deployment/mlserver -n colorflow
+kubectl rollout status deployment/mlserver -n colorflow
+kubectl get pods -n colorflow
+
+```
+
 # Workflow
+
+Fix workload identity: 
+
+```bash
+PROJECT_ID=mlops-colorflow
+GSA=260943884277-compute@developer.gserviceaccount.com
+
+gcloud iam service-accounts add-iam-policy-binding "$GSA" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[colorflow/colorflow-runtime]"
+
+gcloud storage buckets add-iam-policy-binding gs://mlops-flow \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectAdmin"
+
+gcloud storage buckets add-iam-policy-binding gs://mlops-checkpoints \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectAdmin"
+
+gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectViewer"
+
+# restart the pods
+kubectl rollout restart deployment/mlflow deployment/mlserver -n colorflow
+kubectl rollout status deployment/mlflow -n colorflow
+kubectl rollout status deployment/mlserver -n colorflow
+
+# verify:
+kubectl port-forward -n colorflow svc/mlserver 8088:8080
+curl http://127.0.0.1:8088/v2/health/ready
+```
 
 
 ```bash
@@ -392,6 +377,26 @@ kubectl apply -k k8s/jobs/gke/registry
 
 # stop the training and model registry jobs if they are still running:
 kubectl delete job trainer registry -n colorflow --ignore-not-found
+
+# list all running pods
+kubectl get pods -n colorflow
+```
+
+# Clean slate
+
+```bash
+# delete all jobs, deployments, and pods in the colorflow namespace
+kubectl delete job --all -n colorflow
+kubectl delete deployment --all -n colorflow
+kubectl delete pod --all -n colorflow
+
+# delete all platform resources and jobs (but keep the cluster running):
+kubectl delete --ignore-not-found -k k8s/overlays/gke
+# then apply again if you want to restart with a clean slate:
+kubectl apply -k k8s/overlays/gke
+
+# if you also want to wipe persistent data too
+kubectl delete pvc --all -n colorflow
 ```
 
 

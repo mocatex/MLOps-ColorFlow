@@ -86,6 +86,34 @@ spec:
               value: images.dvc
 EOF
 
+cat > k8s/jobs/gke/trainer-checkpoints-bucket-patch.yaml <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: trainer
+  namespace: colorflow
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+    spec:
+      containers:
+        - name: trainer
+          env:
+            - name: COLORFLOW_CHECKPOINT_DIR
+              value: /checkpoints
+            - name: COLORFLOW_CHECKPOINT_URI_PREFIX
+              value: gs://mlops-checkpoints
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /checkpoints
+      volumes:
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: model-checkpoints
+EOF
+
 cat > k8s/jobs/gke/trainer/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -97,6 +125,7 @@ images:
     newTag: ${IMAGE_TAG}
 patches:
   - path: trainer-dvc-pull-patch.yaml
+  - path: trainer-checkpoints-bucket-patch.yaml
 EOF
 
 cat > k8s/jobs/gke/registry/kustomization.yaml <<EOF

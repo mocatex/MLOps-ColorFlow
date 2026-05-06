@@ -155,6 +155,7 @@ def main() -> None:
         model_artifact_path,
     )
     run_id = best_run.info.run_id
+    selected_checkpoint_uri = best_run.data.tags.get("checkpoint_uri")
 
     ensure_registered_model(client, model_name)
 
@@ -175,6 +176,13 @@ def main() -> None:
     client.set_model_version_tag(model_name, model_version.version, "selected_metric", str(metric_value))
     client.set_model_version_tag(model_name, model_version.version, "selected_run_id", run_id)
     client.set_model_version_tag(model_name, model_version.version, "selected_artifact_path", model_artifact_path)
+    if selected_checkpoint_uri:
+        client.set_model_version_tag(
+            model_name,
+            model_version.version,
+            "selected_checkpoint_uri",
+            selected_checkpoint_uri,
+        )
     client.set_registered_model_alias(model_name, "champion", model_version.version)
 
     action = "Reused" if reused_existing_version else "Registered"

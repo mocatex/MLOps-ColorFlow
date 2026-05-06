@@ -14,6 +14,8 @@ spec:
           env:
             - name: COLORFLOW_CHECKPOINT_DIR
               value: /checkpoints
+            - name: COLORFLOW_CHECKPOINT_URI_PREFIX
+              value: gs://mlops-checkpoints
           volumeMounts:
             - name: checkpoints
               mountPath: /checkpoints

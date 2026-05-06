@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Any
 
@@ -163,13 +164,20 @@ def decode_l_tensor(model_name: str, payload: InferenceRequest) -> np.ndarray:
 
     return np.clip(array, -1.0, 1.0)
 
+server = ChampionModelServer()
 
-app = FastAPI(title="ColorFlow Inference API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    server.configure(app)
+    yield
+
+
+app = FastAPI(title="ColorFlow Inference API", lifespan=lifespan)
 app.state.tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 app.state.registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-model")
 app.state.registered_model_alias = os.environ.get("MLFLOW_REGISTERED_MODEL_ALIAS", "champion")
 app.state.served_model_name = os.environ.get("SERVED_MODEL_NAME", "colorflow")
-server = ChampionModelServer()
 
 allowed_origins = [
     origin.strip()
@@ -187,18 +195,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Model-Name", "X-Model-Version", "X-Served-Model"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    server.configure(app)
-    try:
-        server.ensure_model()
-    except Exception:
-        # Keep the container alive so readiness can recover once a champion exists.
-        pass
-
-
 @app.get("/v2/health/live")
 def live() -> dict[str, str]:
     return {"status": "live"}

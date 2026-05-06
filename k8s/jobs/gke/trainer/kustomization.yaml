@@ -8,3 +8,4 @@ images:
     newTag: latest
 patches:
   - path: trainer-dvc-pull-patch.yaml
+  - path: trainer-checkpoints-bucket-patch.yaml

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import hydra
@@ -105,6 +106,8 @@ def run(cfg: DictConfig) -> float:
         # backend; NoopTracker.log_pytorch_model is a no-op.
         best_path = Path(cfg.training.checkpoint.dir) / "gan_best.pt"
         if best_path.exists():
+            checkpoint_uri = resolve_checkpoint_uri(best_path)
+            tracker.set_tags({"checkpoint_uri": checkpoint_uri})
             state = Checkpointer.load(best_path, map_location=device)
             model.generator.load_state_dict(state["generator_state_dict"])
             tracker.log_pytorch_model(model.generator, artifact_path="generator")
@@ -115,6 +118,14 @@ def run(cfg: DictConfig) -> float:
 @hydra.main(version_base=None, config_path="configs", config_name="train")
 def main(cfg: DictConfig) -> float:
     return run(cfg)
+
+
+def resolve_checkpoint_uri(checkpoint_path: Path) -> str:
+    checkpoint_uri_prefix = os.environ.get("COLORFLOW_CHECKPOINT_URI_PREFIX")
+    if checkpoint_uri_prefix:
+        return f"{checkpoint_uri_prefix.rstrip('/')}/{checkpoint_path.name}"
+
+    return checkpoint_path.resolve().as_uri()
 
 
 def _maybe_pretrain(cfg, train_loader, val_loader, device, tracker, config_snapshot):
