@@ -249,20 +249,27 @@ gcloud config set project mlops-colorflow
 # copy the example config and fill in your real values once
 cp scripts/gke.env.example scripts/gke.env
 
-# configure all GKE overlay placeholders from that one file
-./scripts/configure_gke_overlay.sh scripts/gke.env
 
 # build and push all service images to Artifact Registry using the same values
 unset TAG
 set -a # start exporting all variables to the environment
 . ./scripts/gke.env
-# optionally, use a tag to version your images instead of `latest`
-export TAG=mlserver-startup-fix-20260506
+# use a fresh tag whenever you change the image; this avoids reusing cached `latest`
+export TAG=mlserver-oom-fix-20260507
 set +a # stop exporting all variables
-./scripts/build_and_push_gke_images.sh
 
+# configure all GKE overlay placeholders from that one file
+./scripts/configure_gke_overlay.sh scripts/gke.env
+# then build and push the images referenced by the GKE overlay to Artifact Registry:
+./scripts/build_and_push_gke_images.sh
 # deploy the platform to GKE (without training or registry jobs):
 kubectl apply -k k8s/overlays/gke
+# expose MLflow through port forwarding so you can inspect it locally:
+kubectl port-forward -n colorflow svc/mlflow 5002:5000
+# Then in another terminal:
+uv run python services/registry/promote_local_model.py
+kubectl rollout restart deployment/mlserver -n colorflow
+kubectl rollout status deployment/mlserver -n colorflow
 
 # Validate:
 kubectl get ns colorflow # should show the namespace

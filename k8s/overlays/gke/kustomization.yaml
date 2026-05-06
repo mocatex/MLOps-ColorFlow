@@ -7,19 +7,19 @@ resources:
 images:
   - name: colorflow-mlflow
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-mlflow
-    newTag: latest
+    newTag: mlserver-oom-fix-20260507
   - name: colorflow-registry
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry
-    newTag: latest
+    newTag: mlserver-oom-fix-20260507
   - name: colorflow-trainer
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer
-    newTag: latest
+    newTag: mlserver-oom-fix-20260507
   - name: colorflow-ui
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-ui
-    newTag: latest
+    newTag: mlserver-oom-fix-20260507
   - name: colorflow-mlserver
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-mlserver
-    newTag: latest
+    newTag: mlserver-oom-fix-20260507
 patches:
   - path: namespace-labels-patch.yaml
   - path: ingress-host-patch.yaml
@@ -27,3 +27,4 @@ patches:
   - path: mlflow-artifact-root-patch.yaml
   - path: mlflow-no-artifacts-volume-patch.yaml
   - path: mlserver-no-artifacts-volume-patch.yaml
+  - path: mlserver-resources-patch.yaml

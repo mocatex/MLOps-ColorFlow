@@ -1,4 +1,5 @@
 import os
+from threading import Lock
 from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Any
@@ -49,6 +50,7 @@ class ChampionModelServer:
         self.model: Any = None
         self.loaded_version: str | None = None
         self.load_error: str | None = None
+        self.load_lock = Lock()
         self.device = torch.device(os.environ.get("MODEL_DEVICE", "cpu"))
         self.image_size = int(os.environ.get("MODEL_IMAGE_SIZE", "256"))
 
@@ -73,12 +75,26 @@ class ChampionModelServer:
             if self.loaded_version == target_version and self.model is not None:
                 return
 
-            model_uri = f"models:/{self.registered_model_name}/{target_version}"
-            self.model = mlflow.pytorch.load_model(model_uri, dst_path=None)
-            self.model.to(self.device)
-            self.model.eval()
-            self.loaded_version = target_version
-            self.load_error = None
+            if not self.load_lock.acquire(blocking=False):
+                raise RuntimeError("Model load already in progress")
+
+            try:
+                alias_version = self.client.get_model_version_by_alias(
+                    self.registered_model_name,
+                    self.registered_model_alias,
+                )
+                target_version = alias_version.version
+                if self.loaded_version == target_version and self.model is not None:
+                    return
+
+                model_uri = f"models:/{self.registered_model_name}/{target_version}"
+                self.model = mlflow.pytorch.load_model(model_uri, dst_path=None)
+                self.model.to(self.device)
+                self.model.eval()
+                self.loaded_version = target_version
+                self.load_error = None
+            finally:
+                self.load_lock.release()
         except Exception as error:
             self.model = None
             self.loaded_version = None

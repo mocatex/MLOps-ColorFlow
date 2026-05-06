@@ -20,7 +20,7 @@ fi
 
 REGION="${REGION:-europe-west6}"
 REPOSITORY="${REPOSITORY:-colorflow}"
-IMAGE_TAG="${IMAGE_TAG:-${TAG:-latest}}"
+IMAGE_TAG="${TAG:-${IMAGE_TAG:-latest}}"
 APP_HOST="${APP_HOST:-}"
 GCP_SERVICE_ACCOUNT_EMAIL="${GCP_SERVICE_ACCOUNT_EMAIL:?Set GCP_SERVICE_ACCOUNT_EMAIL to your Workload Identity service account email}"
 
@@ -64,6 +64,7 @@ patches:
   - path: mlflow-artifact-root-patch.yaml
   - path: mlflow-no-artifacts-volume-patch.yaml
   - path: mlserver-no-artifacts-volume-patch.yaml
+  - path: mlserver-resources-patch.yaml
 EOF
 
 mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/registry
