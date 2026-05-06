@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import hydra
+import torch
 from omegaconf import DictConfig, OmegaConf
 from torch import nn, optim
 
@@ -23,7 +24,16 @@ def run(cfg: DictConfig) -> float:
     Split out from :func:`main` so other entry points (HPO sweeps, Dagster ops)
     can drive training without re-entering Hydra.
     """
-    device = resolve_device(cfg.device)
+
+    device = torch.device("cpu")
+
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        
+
+
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
