@@ -364,6 +364,11 @@ kubectl apply -k k8s/jobs/gke/trainer
 
 # after training completes, register the best model
 kubectl apply -k k8s/jobs/gke/model-registry
+
+# list all jobs to see their status:
+kubectl get jobs -n colorflow
+# to see the pods created by the jobs:
+kubectl get pods -n colorflow -o wide
 ```
 
 The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
