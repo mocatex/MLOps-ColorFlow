@@ -253,6 +253,7 @@ cp scripts/gke.env.example scripts/gke.env
 ./scripts/configure_gke_overlay.sh scripts/gke.env
 
 # build and push all service images to Artifact Registry using the same values
+unset TAG
 set -a # start exporting all variables to the environment
 . ./scripts/gke.env
 # optionally, use a tag to version your images instead of `latest`
@@ -264,9 +265,9 @@ set +a # stop exporting all variables
 kubectl apply -k k8s/overlays/gke
 
 # Validate:
-kubectl get ns colorflow
-kubectl get pvc -n colorflow
-kubectl get ingress -n colorflow
+kubectl get ns colorflow # should show the namespace
+kubectl get pvc -n colorflow # should show the PVCs, but they may be Pending until the first pods mount them
+kubectl get ingress -n colorflow # should show the ingress with an ADDRESS once it's ready; this is the public entry point to the app on GKE
 kubectl get ingress -n colorflow -w # watch it
 # then open http://<ADDRESS>/
 ```

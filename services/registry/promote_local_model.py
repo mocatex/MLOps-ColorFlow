@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--target-tracking-uri",
-        default="http://localhost:5000",
+        default="http://localhost:5002",
         help="MLflow tracking URI that should serve the promoted model.",
     )
     parser.add_argument(
