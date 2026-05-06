@@ -1,5 +1,5 @@
 source: fastai_coco_sample
-path: data/images          # populated by `dvc pull`; tracked via data/images.dvc
+path: ${oc.env:COLORFLOW_DATA_DIR,../../storage/mlops-coco/images}          # populated by `dvc pull`; tracked via storage/mlops-coco/images.dvc
 glob_pattern: "*.jpg"
 
 # Tiny sample dataset (10 files) — leave subsampling fields null to use all of it.

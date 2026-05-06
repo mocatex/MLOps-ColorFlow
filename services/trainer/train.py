@@ -89,7 +89,7 @@ def run(cfg: DictConfig) -> float:
             start_epoch=start_epoch,
         )
 
-        # Emit a run-level selection metric for the model-registry job.
+        # Emit a run-level selection metric for the registry job.
         # The registry currently ranks runs by descending score, so negate the
         # validation loss to keep "higher is better" semantics there.
         best_val_l1 = float(result["best_val_loss_G_L1"])
@@ -103,7 +103,7 @@ def run(cfg: DictConfig) -> float:
         # Log the best generator as an MLflow PyTorch model so mlserver-mlflow
         # can serve it without a custom runtime. Only meaningful for the MLflow
         # backend; NoopTracker.log_pytorch_model is a no-op.
-        best_path = output_dir / "checkpoints" / "gan_best.pt"
+        best_path = Path(cfg.training.checkpoint.dir) / "gan_best.pt"
         if best_path.exists():
             state = Checkpointer.load(best_path, map_location=device)
             model.generator.load_state_dict(state["generator_state_dict"])

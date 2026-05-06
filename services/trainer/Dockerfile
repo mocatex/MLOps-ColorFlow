@@ -38,19 +38,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --extra hpo
 
 # Source code + Hydra configs + entry scripts.
-COPY src/ src/
-COPY configs/ configs/
-COPY train.py tune.py ./
+COPY services/trainer/src/ src/
+COPY services/trainer/configs/ configs/
+COPY services/trainer/train.py services/trainer/tune.py ./
 
 # DVC metadata + optional materialized dataset. The cache and config.local are
 # excluded by .dockerignore, so this only ships tracked metadata and any pulled data.
-COPY .dvc/ .dvc/
-COPY .dvcignore ./
-COPY data/ data/
-RUN mkdir -p data/images
+COPY storage/mlops-coco/ storage/mlops-coco/
+RUN mkdir -p storage/mlops-coco/images
 
 # Runtime entrypoint: fail fast if the expected dataset is missing.
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY services/trainer/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/.venv/bin:${PATH}" \

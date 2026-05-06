@@ -7,6 +7,25 @@ from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException  # type: ignore[import-not-found]
 
 
+def resolve_tracking_uri() -> str:
+    explicit_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+    if explicit_tracking_uri:
+        return explicit_tracking_uri
+
+    for candidate in ("http://mlflow:5000", "http://localhost:5001"):
+        try:
+            response = requests.get(f"{candidate}/health", timeout=3)
+            response.raise_for_status()
+        except requests.RequestException:
+            continue
+        return candidate
+
+    raise RuntimeError(
+        "Could not reach MLflow at http://mlflow:5000 or http://localhost:5001. "
+        "Set MLFLOW_TRACKING_URI explicitly before running register.py."
+    )
+
+
 def ensure_registered_model(client: MlflowClient, model_name: str) -> None:
     try:
         client.create_registered_model(model_name)
@@ -91,8 +110,31 @@ def wait_for_model_version(client: MlflowClient, model_name: str, version: str) 
     raise RuntimeError(f"Model version {model_name}/{version} did not become READY")
 
 
+def find_existing_model_version(
+    client: MlflowClient,
+    model_name: str,
+    run_id: str,
+    artifact_path: str,
+):
+    for model_version in client.search_model_versions(f"name='{model_name}'"):
+        tags = model_version.tags or {}
+        tagged_run_id = tags.get("selected_run_id")
+        tagged_artifact_path = tags.get("selected_artifact_path")
+
+        if tagged_run_id == run_id and tagged_artifact_path == artifact_path:
+            return model_version
+
+        if tagged_run_id == run_id and tagged_artifact_path is None:
+            return model_version
+
+        if model_version.run_id == run_id:
+            return model_version
+
+    return None
+
+
 def main() -> None:
-    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+    tracking_uri = resolve_tracking_uri()
     experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "colorflow")
     model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-model")
     metric_name = os.environ.get("SELECTION_METRIC", "selection_score")
@@ -116,18 +158,29 @@ def main() -> None:
 
     ensure_registered_model(client, model_name)
 
-    model_uri = f"runs:/{run_id}/{model_artifact_path}"
-    model_version = mlflow.register_model(model_uri=model_uri, name=model_name)
+    model_version = find_existing_model_version(
+        client,
+        model_name,
+        run_id,
+        model_artifact_path,
+    )
+    reused_existing_version = model_version is not None
+    if model_version is None:
+        model_uri = f"runs:/{run_id}/{model_artifact_path}"
+        model_version = mlflow.register_model(model_uri=model_uri, name=model_name)
+
     wait_for_model_version(client, model_name, model_version.version)
 
     client.set_model_version_tag(model_name, model_version.version, "selected_metric_name", selected_metric_name)
     client.set_model_version_tag(model_name, model_version.version, "selected_metric", str(metric_value))
     client.set_model_version_tag(model_name, model_version.version, "selected_run_id", run_id)
+    client.set_model_version_tag(model_name, model_version.version, "selected_artifact_path", model_artifact_path)
     client.set_registered_model_alias(model_name, "champion", model_version.version)
 
+    action = "Reused" if reused_existing_version else "Registered"
     print(
-        f"Registered model '{model_name}' version {model_version.version} "
-        f"from run {run_id} using {selected_metric_name}={metric_value} "
+        f"{action} model '{model_name}' version {model_version.version} "
+        f"for run {run_id} using {selected_metric_name}={metric_value} "
         f"from artifact path '{model_artifact_path}'"
     )
 

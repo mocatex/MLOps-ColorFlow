@@ -1,10 +1,10 @@
-epochs: 10 # changed for testing
+epochs: 2 
 
 pretrain:
   enabled: true
   lr: 1.0e-4
   weight_decay: 0.0
-  epochs: 10 
+  epochs: 2
 
 gan:
   gen_lr: 2.0e-4
@@ -14,7 +14,7 @@ gan:
   weight_decay: 0.0
 
 checkpoint:
-  dir: ${output_dir}/checkpoints
+  dir: ${checkpoint_dir}
   monitor_pretrain: pretrain_val_l1
   monitor_gan: val_loss_G_L1
   mode: min

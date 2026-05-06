@@ -39,12 +39,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - checkpoints-bucket-pv.yaml
+  - checkpoints-bucket-pvc.yaml
 images:
   - name: colorflow-mlflow
     newName: ${image_prefix}/colorflow-mlflow
     newTag: ${IMAGE_TAG}
-  - name: colorflow-model-registry
-    newName: ${image_prefix}/colorflow-model-registry
+  - name: colorflow-registry
+    newName: ${image_prefix}/colorflow-registry
     newTag: ${IMAGE_TAG}
   - name: colorflow-trainer
     newName: ${image_prefix}/colorflow-trainer
@@ -57,7 +59,6 @@ images:
     newTag: ${IMAGE_TAG}
 patches:
   - path: namespace-labels-patch.yaml
-  - path: checkpoints-pvc-patch.yaml
   - path: ingress-host-patch.yaml
   - path: runtime-serviceaccount-patch.yaml
   - path: mlflow-artifact-root-patch.yaml
@@ -65,7 +66,7 @@ patches:
   - path: mlserver-no-artifacts-volume-patch.yaml
 EOF
 
-mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/model-registry
+mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/registry
 
 cat > k8s/jobs/gke/trainer/trainer-dvc-pull-patch.yaml <<EOF
 apiVersion: batch/v1
@@ -82,7 +83,7 @@ spec:
             - name: DVC_PULL_DATA
               value: "true"
             - name: DVC_PULL_TARGET
-              value: data/images.dvc
+              value: images.dvc
 EOF
 
 cat > k8s/jobs/gke/trainer/kustomization.yaml <<EOF
@@ -98,14 +99,14 @@ patches:
   - path: trainer-dvc-pull-patch.yaml
 EOF
 
-cat > k8s/jobs/gke/model-registry/kustomization.yaml <<EOF
+cat > k8s/jobs/gke/registry/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/model-registry
+  - ../../base/registry
 images:
-  - name: colorflow-model-registry
-    newName: ${image_prefix}/colorflow-model-registry
+  - name: colorflow-registry
+    newName: ${image_prefix}/colorflow-registry
     newTag: ${IMAGE_TAG}
 EOF
 
@@ -217,5 +218,5 @@ Configured GKE overlays with:
 Next:
   1. Push images with scripts/build_and_push_gke_images.sh using the same PROJECT_ID/REGION/REPOSITORY/IMAGE_TAG values.
   2. Apply k8s/overlays/gke.
-  3. Trigger k8s/jobs/gke/trainer and k8s/jobs/gke/model-registry only when you want them.
+  3. Trigger k8s/jobs/gke/trainer and k8s/jobs/gke/registry only when you want them.
 EOF

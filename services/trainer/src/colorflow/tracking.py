@@ -43,6 +43,10 @@ class MLflowTracker:
         self._mlflow = mlflow
         if tracking_uri:
             mlflow.set_tracking_uri(tracking_uri)
+        else:
+            local_tracking_dir = Path(__file__).resolve().parents[4] / "storage" / "mlops-flow"
+            local_tracking_dir.mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri(local_tracking_dir.as_uri())
         mlflow.set_experiment(experiment)
         self._run_name = run_name
         self._run = None

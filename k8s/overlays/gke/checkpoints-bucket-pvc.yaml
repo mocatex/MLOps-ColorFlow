@@ -4,7 +4,10 @@ metadata:
   name: model-checkpoints
   namespace: colorflow
 spec:
-  storageClassName: standard-rwo
+  accessModes:
+    - ReadWriteMany
   resources:
     requests:
-      storage: 50Gi
+      storage: 5Gi
+  storageClassName: gcsfuse-bucket
+  volumeName: model-checkpoints-bucket

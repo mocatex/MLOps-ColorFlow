@@ -85,8 +85,14 @@ def make_objective(args: argparse.Namespace, hydra_overrides: list[str]):
             "model.loss.gan_mode": trial.suggest_categorical("gan_mode", args.gan_modes),
         }
         trial_overrides = [f"{k}={v}" for k, v in params.items()]
+        trial_output_dir = (
+            f"../../storage/mlops-checkpoints/optuna/{args.study_name}/trial_{trial.number:03d}"
+        )
         trial_overrides.append(
-            f"output_dir=outputs/optuna/{args.study_name}/trial_{trial.number:03d}"
+            f"output_dir={trial_output_dir}"
+        )
+        trial_overrides.append(
+            f"checkpoint_dir={trial_output_dir}"
         )
 
         # Hydra's GlobalHydra is a singleton; clear any state from a prior trial

@@ -3,7 +3,7 @@ kind: Kustomization
 resources:
   - ../base
 images:
-  - name: colorflow-model-registry
+  - name: colorflow-registry
     newTag: local
   - name: colorflow-trainer
     newTag: local

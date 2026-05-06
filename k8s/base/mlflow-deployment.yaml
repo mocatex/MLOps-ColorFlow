@@ -45,10 +45,10 @@ spec:
                   name: mlflow-secrets
                   key: postgres-db
             - name: MLFLOW_ARTIFACT_ROOT
-              value: /mlflow/artifacts
+              value: /outputs/mlruns
           volumeMounts:
             - name: mlflow-artifacts
-              mountPath: /mlflow/artifacts
+              mountPath: /outputs
           readinessProbe:
             tcpSocket:
               port: http

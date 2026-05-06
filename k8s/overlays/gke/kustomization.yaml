@@ -2,12 +2,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - checkpoints-bucket-pv.yaml
+  - checkpoints-bucket-pvc.yaml
 images:
   - name: colorflow-mlflow
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-mlflow
     newTag: latest
-  - name: colorflow-model-registry
-    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-model-registry
+  - name: colorflow-registry
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry
     newTag: latest
   - name: colorflow-trainer
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer
@@ -20,7 +22,6 @@ images:
     newTag: latest
 patches:
   - path: namespace-labels-patch.yaml
-  - path: checkpoints-pvc-patch.yaml
   - path: ingress-host-patch.yaml
   - path: runtime-serviceaccount-patch.yaml
   - path: mlflow-artifact-root-patch.yaml

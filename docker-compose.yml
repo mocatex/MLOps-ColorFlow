@@ -34,10 +34,11 @@ services:
       dockerfile: docker/mlflow.Dockerfile
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
-      MLFLOW_DEFAULT_ARTIFACT_ROOT: gs://mlops-coco/mlflow-artifacts
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/storage/mlops-flow
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
     volumes:
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
+      - ./storage:/app/storage
     ports:
       - "5001:5001"
     depends_on:
@@ -66,13 +67,16 @@ services:
         BASE_IMAGE: mlops-colorflow-base:latest
     image: mlops-colorflow-training:latest
     environment:
+      COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
+      COLORFLOW_OUTPUT_DIR: /app/outputs
+      COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
       MLFLOW_TRACKING_URI: http://mlflow:5001
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
       # DVC_PULL: skip          # uncomment if data is bind-mounted and no DVC backend is reachable
     volumes:
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
       - ./outputs:/app/outputs
-      - ./data/images:/app/data/images:ro   # local data → entrypoint auto-detects and skips dvc pull
+      - ./storage:/app/storage
     depends_on:
       mlflow:
         condition: service_healthy
@@ -82,12 +86,15 @@ services:
     image: mlops-colorflow-training:latest
     command: ["tune.py", "--n-trials", "20"]
     environment:
+      COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
+      COLORFLOW_OUTPUT_DIR: /app/outputs
+      COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
       MLFLOW_TRACKING_URI: http://mlflow:5001
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
     volumes:
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
       - ./outputs:/app/outputs
-      - ./data/images:/app/data/images:ro
+      - ./storage:/app/storage
     depends_on:
       mlflow:
         condition: service_healthy

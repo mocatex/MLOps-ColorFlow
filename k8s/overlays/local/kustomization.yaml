@@ -5,7 +5,7 @@ resources:
 images:
   - name: colorflow-mlflow
     newTag: local
-  - name: colorflow-model-registry
+  - name: colorflow-registry
     newTag: local
   - name: colorflow-trainer
     newTag: local
@@ -15,5 +15,4 @@ images:
     newTag: local
 patches:
   - path: namespace-labels-patch.yaml
-  - path: checkpoints-pvc-patch.yaml
   - path: ingress-host-patch.yaml

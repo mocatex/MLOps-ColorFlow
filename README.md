@@ -31,6 +31,8 @@ one-shot training
 one-shot HPO     
 > docker compose run --rm tuning
 
+For host-based Docker Compose runs, local MLflow artifacts are written to `storage/mlops-flow/` and raw checkpoints are written to `storage/mlops-checkpoints/`.
+
 Override Hydra config from the CLI:
 > docker compose run --rm training python train.py training.epochs=2 data.batch_size=8
 
@@ -40,7 +42,7 @@ It now deploys a minimal platform slice and a demo application:
 
 - one namespace,
 - basic resource defaults,
-- one persistent volume claim for model checkpoints,
+- one persistent volume claim for shared in-cluster outputs on local Kubernetes,
 - one PostgreSQL deployment for MLflow metadata,
 - one MLflow deployment with a persistent artifact store,
 - one local `kind` cluster configuration,
@@ -77,8 +79,8 @@ kind create cluster --name colorflow --config k8s/kind/cluster.yaml
 
 # build all images referenced by the Kubernetes manifests
 docker build -t colorflow-mlflow:local services/mlflow
-docker build -t colorflow-model-registry:local services/model_registry
-docker build -t colorflow-trainer:local services/trainer
+docker build -t colorflow-registry:local services/registry
+docker build -t colorflow-trainer:local -f services/trainer/Dockerfile .
 docker build -t colorflow-ui:local services/ui
 docker build -t colorflow-mlserver:local services/mlserver
 
@@ -154,22 +156,22 @@ To run the ordered flow automatically, use the following script:
 
 The script does four things in order:
 
-- deletes any old `trainer` and `model-registry` jobs,
+- deletes any old `trainer` and `registry` jobs,
 - applies the local overlay so the platform is up,
 - creates the `trainer` job explicitly,
 - waits for `trainer` to complete and prints its logs,
-- creates `model-registry`, waits for it to complete, and prints its logs.
+- creates `registry`, waits for it to complete, and prints its logs.
 
 If you want to run the same steps manually instead of using the script:
 
 ```bash
 # clean up any old jobs first
-kubectl delete job trainer model-registry -n colorflow --ignore-not-found
+kubectl delete job trainer registry -n colorflow --ignore-not-found
 # make sure the platform is up
 kubectl apply -k k8s/overlays/local
 
 # load the images into kind
-kind load docker-image colorflow-model-registry:local --name colorflow
+kind load docker-image colorflow-registry:local --name colorflow
 kind load docker-image colorflow-trainer:local --name colorflow
 
 # create both jobs from the local job overlay
@@ -180,9 +182,9 @@ kubectl wait --for=condition=complete job/trainer -n colorflow
 kubectl logs -f job/trainer -n colorflow
 
 # wait for the model registry to complete
-kubectl wait --for=condition=complete job/model-registry -n colorflow
+kubectl wait --for=condition=complete job/registry -n colorflow
 # or to watch it live:
-kubectl logs -f job/model-registry -n colorflow 
+kubectl logs -f job/registry -n colorflow 
 ```
 
 
@@ -226,7 +228,7 @@ kubectl get job trainer -n colorflow -w
 kubectl get pods -n colorflow -l job-name=trainer -w
 
 # to see the model registry logs:
-kubectl logs job/model-registry -n colorflow
+kubectl logs job/registry -n colorflow
 ```
 
 ## Run a smoke test
@@ -249,7 +251,9 @@ python train.py training.epochs=10 training.pretrain.enabled=false data.external
 
 # Inspect Persistent Storage
 
-The `model-checkpoints` persistent volume claim is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
+In the local `kind` cluster, trainer outputs and raw checkpoints are written under `/outputs` on the shared `mlflow-artifacts` PVC. Raw checkpoint files end up under `/outputs/checkpoints` inside the trainer pod.
+
+That PVC is backed locally by the `kind` storage provisioner. In this setup, the easiest way to inspect it is directly on the worker node container.
 
 ```bash
 docker exec -it colorflow-worker sh
@@ -262,13 +266,13 @@ exit
 docker cp colorflow-worker:/var/local-path-provisioner/dir/to/gan_latest.pt ~/Downloads/gan_latest.pt
 ```
 
-This direct path is specific to the current local cluster. In this setup, the checkpoint PVC is backed by:
+This direct path is specific to the current local cluster. In this setup, the shared outputs PVC is backed by:
 
 ```bash
-/var/local-path-provisioner/pvc-823f4bfe-04ee-471e-9566-00813734c6d1_colorflow_model-checkpoints
+/var/local-path-provisioner/pvc-<uid>_colorflow_mlflow-artifacts
 ```
 
-On GKE, the inspection flow will differ because the storage backend will not use the local-path provisioner.
+On GKE, MLflow artifacts go to `gs://mlops-flow` and trainer checkpoints go to `gs://mlops-checkpoints` through a bucket-backed `model-checkpoints` PVC mounted at `/checkpoints` for the trainer job.
 
 If you want to run it again after it completes:
 
@@ -289,7 +293,9 @@ GKE needs project-specific values:
 - region or zone
 - node sizing
 - billing-enabled project
-- a GCS bucket for MLflow artifacts
+- the `gs://mlops-flow` bucket for MLflow artifacts
+- the `gs://mlops-checkpoints` bucket for raw trainer checkpoints
+- the DVC data bucket
 - a Google service account for Workload Identity
 
 Create the cluster manually first:
@@ -348,13 +354,13 @@ http://<INGRESS_ADDRESS>/
 
 If the address appears but the browser still resets or hangs for a short time, GKE is usually still finishing load balancer health checks. Give it another minute or two and retry.
 
-`./scripts/configure_gke_overlay.sh` writes the GKE overlay files from one configuration source. The GKE overlay assumes MLflow and MLServer will use object storage for model artifacts instead of sharing the local `mlflow-artifacts` PVC.
+`./scripts/configure_gke_overlay.sh` writes the GKE overlay files from one configuration source. The GKE overlay stores MLflow artifacts in `gs://mlops-flow` and creates a bucket-backed `model-checkpoints` PVC for `gs://mlops-checkpoints`.
 
-The GKE path also assumes Workload Identity for GCS access. Configure `GCP_SERVICE_ACCOUNT_EMAIL` in `scripts/gke.env`, then grant that service account access to the artifact bucket and dataset bucket.
+The GKE path also assumes Workload Identity for GCS access. Configure `GCP_SERVICE_ACCOUNT_EMAIL` in `scripts/gke.env`, then grant that service account access to the MLflow artifact bucket, the checkpoint bucket, and the DVC dataset bucket.
 
-The `colorflow-runtime` Kubernetes service account is used by MLflow, MLServer, the trainer job, and the model-registry job. On GKE, bind it to your Google service account before you deploy. At a minimum, that Google service account needs storage object access to the buckets used by MLflow artifacts and DVC data.
+The `colorflow-runtime` Kubernetes service account is used by MLflow, MLServer, the trainer job, and the registry job. On GKE, bind it to your Google service account before you deploy. At a minimum, that Google service account needs storage object access to the buckets used by MLflow artifacts, trainer checkpoints, and DVC data.
 
-The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image.
+The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image. The same overlay mounts the checkpoint bucket at `/checkpoints` and sets `COLORFLOW_CHECKPOINT_DIR=/checkpoints` for raw `.pt` files.
 
 Training and model registration are on-demand on GKE. Applying `k8s/overlays/gke` starts the platform only. Trigger jobs explicitly when you want them:
 
@@ -363,16 +369,13 @@ Training and model registration are on-demand on GKE. Applying `k8s/overlays/gke
 kubectl apply -k k8s/jobs/gke/trainer
 
 # after training completes, register the best model
-kubectl apply -k k8s/jobs/gke/model-registry
+kubectl apply -k k8s/jobs/gke/registry
 
 # list all jobs to see their status:
 kubectl get jobs -n colorflow
 # to see the pods created by the jobs:
 kubectl get pods -n colorflow -o wide
 ```
-
-The same PVC behavior can happen on GKE if the selected storage class delays binding until a consuming pod is scheduled.
-
 
 # Workflow
 
@@ -385,10 +388,10 @@ kubectl apply -k k8s/overlays/gke
 kubectl apply -k k8s/jobs/gke/trainer
 
 # Trigger model registration only after training completes:
-kubectl apply -k k8s/jobs/gke/model-registry
+kubectl apply -k k8s/jobs/gke/registry
 
 # stop the training and model registry jobs if they are still running:
-kubectl delete job trainer model-registry -n colorflow --ignore-not-found
+kubectl delete job trainer registry -n colorflow --ignore-not-found
 ```
 
 

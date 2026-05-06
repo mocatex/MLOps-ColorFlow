@@ -218,6 +218,18 @@
       const outputPreview = document.getElementById("output-preview");
       const inputMeta = document.getElementById("input-meta");
       const outputMeta = document.getElementById("output-meta");
+      const apiBaseUrl = (() => {
+        if (window.COLORFLOW_API_BASE_URL) {
+          return window.COLORFLOW_API_BASE_URL.replace(/\/$/, "");
+        }
+
+        const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+        if (isLocalhost && window.location.port && window.location.port !== "8080") {
+          return `${window.location.protocol}//${window.location.hostname}:8080`;
+        }
+
+        return "";
+      })();
 
       let inputPreviewUrl = "";
       let outputPreviewUrl = "";
@@ -261,7 +273,7 @@
         outputMeta.textContent = "Generating colorized image";
 
         try {
-          const response = await fetch("/v2/models/colorflow/infer-image", {
+          const response = await fetch(`${apiBaseUrl}/v2/models/colorflow/infer-image`, {
             method: "POST",
             body
           });

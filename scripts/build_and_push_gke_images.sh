@@ -30,15 +30,16 @@ docker buildx build \
 docker buildx build \
   --platform "${PLATFORM}" \
   --build-arg BASE_IMAGE="${MLFLOW_IMAGE}" \
-  --tag "${IMAGE_PREFIX}/colorflow-model-registry:${TAG}" \
+  --tag "${IMAGE_PREFIX}/colorflow-registry:${TAG}" \
   --push \
-  services/model_registry
+  services/registry
 
 docker buildx build \
   --platform "${PLATFORM}" \
+  --file services/trainer/Dockerfile \
   --tag "${IMAGE_PREFIX}/colorflow-trainer:${TAG}" \
   --push \
-  services/trainer
+  .
 
 docker buildx build \
   --platform "${PLATFORM}" \
@@ -56,7 +57,7 @@ docker buildx build \
 cat <<EOF
 Published images:
   ${MLFLOW_IMAGE}
-  ${IMAGE_PREFIX}/colorflow-model-registry:${TAG}
+  ${IMAGE_PREFIX}/colorflow-registry:${TAG}
   ${IMAGE_PREFIX}/colorflow-trainer:${TAG}
   ${IMAGE_PREFIX}/colorflow-ui:${TAG}
   ${IMAGE_PREFIX}/colorflow-mlserver:${TAG}

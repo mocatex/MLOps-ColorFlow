@@ -18,13 +18,15 @@ spec:
           image: colorflow-trainer
           imagePullPolicy: IfNotPresent
           env:
+            - name: COLORFLOW_OUTPUT_DIR
+              value: /outputs
+            - name: COLORFLOW_CHECKPOINT_DIR
+              value: /outputs/checkpoints
             - name: MLFLOW_TRACKING_URI
               value: http://mlflow:5000
           volumeMounts:
             - name: mlflow-artifacts
-              mountPath: /mlflow/artifacts
-            - name: checkpoints
-              mountPath: /checkpoints
+              mountPath: /outputs
           resources:
             requests:
               cpu: 1000m
@@ -36,6 +38,3 @@ spec:
         - name: mlflow-artifacts
           persistentVolumeClaim:
             claimName: mlflow-artifacts
-        - name: checkpoints
-          persistentVolumeClaim:
-            claimName: model-checkpoints

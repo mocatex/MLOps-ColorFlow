@@ -4,7 +4,6 @@ resources:
   - namespace.yaml
   - runtime-serviceaccount.yaml
   - limitrange.yaml
-  - checkpoints-pvc.yaml
   - mlflow-secret.yaml
   - postgres-pvc.yaml
   - postgres-deployment.yaml

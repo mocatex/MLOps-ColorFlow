@@ -1,8 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - ../../base/model-registry
-images:
-  - name: colorflow-model-registry
-    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-model-registry
-    newTag: latest

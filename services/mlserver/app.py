@@ -5,6 +5,7 @@ from typing import Any
 import mlflow
 import numpy as np
 import torch
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from mlflow import MlflowClient
@@ -169,6 +170,23 @@ app.state.registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME",
 app.state.registered_model_alias = os.environ.get("MLFLOW_REGISTERED_MODEL_ALIAS", "champion")
 app.state.served_model_name = os.environ.get("SERVED_MODEL_NAME", "colorflow")
 server = ChampionModelServer()
+
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "http://localhost:8081,http://127.0.0.1:8081,http://localhost:8080,http://127.0.0.1:8080",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Model-Name", "X-Model-Version", "X-Served-Model"],
+)
 
 
 @app.on_event("startup")

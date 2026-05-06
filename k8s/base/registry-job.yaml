@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: model-registry
+  name: registry
   namespace: colorflow
 spec:
   backoffLimit: 0
@@ -9,13 +9,12 @@ spec:
   template:
     metadata:
       labels:
-        app: model-registry
+        app: registry
     spec:
-      serviceAccountName: colorflow-runtime
       restartPolicy: Never
       containers:
         - name: registry
-          image: colorflow-model-registry
+          image: colorflow-registry
           imagePullPolicy: IfNotPresent
           env:
             - name: MLFLOW_TRACKING_URI
