@@ -5,6 +5,25 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
+if [ "$#" -gt 1 ]; then
+  echo "Usage: $0 [env-file]" >&2
+  exit 1
+fi
+
+env_file=""
+if [ "$#" -eq 1 ]; then
+  env_file="$1"
+elif [ -f "$repo_root/scripts/gke.env" ]; then
+  env_file="$repo_root/scripts/gke.env"
+fi
+
+if [ -n "$env_file" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$env_file"
+  set +a
+fi
+
 : "${PROJECT_ID:?Set PROJECT_ID to your Google Cloud project ID}"
 
 REGION="${REGION:-europe-west6}"

@@ -67,6 +67,286 @@ patches:
   - path: mlserver-resources-patch.yaml
 EOF
 
+mkdir -p k8s/stages/gke/mlflow k8s/stages/gke/mlserver k8s/stages/gke/ui
+
+cat > k8s/stages/gke/mlflow/kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../overlays/gke
+patches:
+  - path: exclude-resources-patch.yaml
+EOF
+
+cat > k8s/stages/gke/mlflow/exclude-resources-patch.yaml <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-bucket
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlserver
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlserver
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: colorflow
+  namespace: colorflow
+
+$patch: delete
+EOF
+
+cat > k8s/stages/gke/mlserver/kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../overlays/gke
+patches:
+  - path: exclude-resources-patch.yaml
+EOF
+
+cat > k8s/stages/gke/mlserver/exclude-resources-patch.yaml <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-secrets
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-bucket
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: colorflow
+  namespace: colorflow
+
+$patch: delete
+EOF
+
+cat > k8s/stages/gke/ui/kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../overlays/gke
+patches:
+  - path: exclude-resources-patch.yaml
+EOF
+
+cat > k8s/stages/gke/ui/exclude-resources-patch.yaml <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-secrets
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-bucket
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlserver
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlserver
+  namespace: colorflow
+
+$patch: delete
+EOF
+
 mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/registry
 
 cat > k8s/jobs/gke/trainer/trainer-dvc-pull-patch.yaml <<EOF
@@ -247,6 +527,7 @@ Configured GKE overlays with:
 
 Next:
   1. Push images with scripts/build_and_push_gke_images.sh using the same PROJECT_ID/REGION/REPOSITORY/IMAGE_TAG values.
-  2. Apply k8s/overlays/gke.
-  3. Trigger k8s/jobs/gke/trainer and k8s/jobs/gke/registry only when you want them.
+  2. For ordered startup, apply k8s/stages/gke/mlflow, then k8s/stages/gke/mlserver, then k8s/stages/gke/ui.
+  3. Or apply k8s/overlays/gke if you still want the whole platform at once.
+  4. Trigger k8s/jobs/gke/trainer and k8s/jobs/gke/registry only when you want them.
 EOF

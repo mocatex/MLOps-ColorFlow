@@ -30,22 +30,26 @@ services:
 
   mlflow:
     build:
-      context: .
-      dockerfile: docker/mlflow.Dockerfile
+      context: services/mlflow
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=postgresql://mlflow:mlflow@postgres:5432/mlflow
+      - --default-artifact-root=file:///outputs/mlops-flow
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
-      MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/storage/mlops-flow
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
     volumes:
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
-      - ./storage:/app/storage
+      - ./storage:/outputs
     ports:
-      - "5001:5001"
+      - "5001:5000"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -54,23 +58,18 @@ services:
   base:
     build:
       context: .
-      dockerfile: docker/base.Dockerfile
-    image: mlops-colorflow-base:latest
-    # `base` is built on demand by other services; not meant to run.
+      dockerfile: services/trainer/Dockerfile
+    image: mlops-colorflow-training:latest
+    # `base` remains as a one-time local build alias for the trainer image.
     command: ["true"]
 
   training:
-    build:
-      context: .
-      dockerfile: docker/training.Dockerfile
-      args:
-        BASE_IMAGE: mlops-colorflow-base:latest
     image: mlops-colorflow-training:latest
     environment:
       COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
       COLORFLOW_OUTPUT_DIR: /app/outputs
       COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
-      MLFLOW_TRACKING_URI: http://mlflow:5001
+      MLFLOW_TRACKING_URI: http://mlflow:5000
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
       # DVC_PULL: skip          # uncomment if data is bind-mounted and no DVC backend is reachable
     volumes:
@@ -78,6 +77,8 @@ services:
       - ./outputs:/app/outputs
       - ./storage:/app/storage
     depends_on:
+      base:
+        condition: service_completed_successfully
       mlflow:
         condition: service_healthy
 
@@ -89,13 +90,15 @@ services:
       COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
       COLORFLOW_OUTPUT_DIR: /app/outputs
       COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
-      MLFLOW_TRACKING_URI: http://mlflow:5001
+      MLFLOW_TRACKING_URI: http://mlflow:5000
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-credentials.json
     volumes:
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/gcp-credentials.json:ro
       - ./outputs:/app/outputs
       - ./storage:/app/storage
     depends_on:
+      base:
+        condition: service_completed_successfully
       mlflow:
         condition: service_healthy
 

@@ -240,15 +240,33 @@ Create the cluster manually first:
 gcloud services enable container.googleapis.com
 gcloud container clusters create-auto colorflow --region europe-west6
 gcloud container clusters get-credentials colorflow --region europe-west6
+```
 
+# Build and Deploy to GKE
+
+```bash
 # check if you have set the project 
 gcloud config get project
 # if not, set it to the correct one
 gcloud config set project mlops-colorflow
 
-# copy the example config and fill in your real values once
-cp scripts/gke.env.example scripts/gke.env
+# enable Artifact Registry in that project
+gcloud services enable artifactregistry.googleapis.com --project mlops-colorflow
 
+# create the docker repository once if it does not exist yet
+gcloud artifacts repositories create colorflow \
+  --repository-format=docker \
+  --location=europe-west6 \
+  --project=mlops-colorflow
+
+# make sure you have gke.env filled out with the correct values
+PROJECT_ID=mlops-colorflow
+REGION=europe-west6
+REPOSITORY=colorflow
+IMAGE_TAG=your-new-tag
+APP_HOST=
+MLFLOW_ARTIFACT_ROOT=gs://mlops-flow
+GCP_SERVICE_ACCOUNT_EMAIL=our-real-service-account@mlops-colorflow.iam.gserviceaccount.com
 
 # build and push all service images to Artifact Registry using the same values
 unset TAG
@@ -260,20 +278,44 @@ set +a # stop exporting all variables
 
 # configure all GKE overlay placeholders from that one file
 ./scripts/configure_gke_overlay.sh scripts/gke.env
+# make sure docker daemon is running
 # then build and push the images referenced by the GKE overlay to Artifact Registry:
-./scripts/build_and_push_gke_images.sh
-# deploy the platform to GKE (without training or registry jobs):
-kubectl apply -k k8s/overlays/gke
+./scripts/build_and_push_gke_images.sh scripts/gke.env
+# start MLflow first:
+kubectl apply -k k8s/stages/gke/mlflow
+# both should return "successfully rolled out" before you proceed
+kubectl rollout status deployment/postgres -n colorflow 
+kubectl rollout status deployment/mlflow -n colorflow
+
+# run local mlflow
+docker compose up -d postgres mlflow
+# run local registration 
+uv run python services/registry/register.py
+# mirror the local model files into GCS
+gcloud storage rsync --recursive storage/mlops-flow gs://mlops-flow
+gcloud storage cp storage/mlops-checkpoints/gan_best.pt gs://mlops-checkpoints/gan_best.pt
+
 # expose MLflow through port forwarding so you can inspect it locally:
 kubectl port-forward -n colorflow svc/mlflow 5002:5000
-# Then in another terminal:
-uv run python services/registry/promote_local_model.py
-kubectl rollout restart deployment/mlserver -n colorflow
+# In another terminal, promote the local champion into the cluster MLflow registry
+# It should say soemthing like "set alias 'champion'"
+uv run python services/registry/promote_local_model.py \
+  --source-tracking-uri "file://$PWD/storage/mlops-flow" \
+  --target-tracking-uri http://localhost:5002 \
+  --artifact-root gs://mlops-flow \
+  --checkpoint-root gs://mlops-checkpoints
+
+# start MLServer after the target champion alias exists:
+kubectl apply -k k8s/stages/gke/mlserver
+# should return "successfully rolled out" before you proceed:
 kubectl rollout status deployment/mlserver -n colorflow
+# start the UI and ingress last:
+kubectl apply -k k8s/stages/gke/ui
+# should return "successfully rolled out"
+kubectl rollout status deployment/ui -n colorflow
 
 # Validate:
 kubectl get ns colorflow # should show the namespace
-kubectl get pvc -n colorflow # should show the PVCs, but they may be Pending until the first pods mount them
 kubectl get ingress -n colorflow # should show the ingress with an ADDRESS once it's ready; this is the public entry point to the app on GKE
 kubectl get ingress -n colorflow -w # watch it
 # then open http://<ADDRESS>/
@@ -289,13 +331,15 @@ If the address appears but the browser still resets or hangs for a short time, G
 
 `./scripts/configure_gke_overlay.sh` writes the GKE overlay files from one configuration source. The GKE overlay stores MLflow artifacts in `gs://mlops-flow` and creates a bucket-backed `model-checkpoints` PVC for `gs://mlops-checkpoints`.
 
+For the clean startup order above, use the staged overlays `k8s/stages/gke/mlflow`, `k8s/stages/gke/mlserver`, and `k8s/stages/gke/ui`. `k8s/overlays/gke` still exists if you want to start the whole platform at once.
+
 The GKE path also assumes Workload Identity for GCS access. Configure `GCP_SERVICE_ACCOUNT_EMAIL` in `scripts/gke.env`, then grant that service account access to the MLflow artifact bucket, the checkpoint bucket, and the DVC dataset bucket.
 
 The `colorflow-runtime` Kubernetes service account is used by MLflow, MLServer, the trainer job, and the registry job. On GKE, bind it to your Google service account before you deploy. At a minimum, that Google service account needs storage object access to the buckets used by MLflow artifacts, trainer checkpoints, and DVC data.
 
 The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image. The same overlay mounts the checkpoint bucket at `/checkpoints` and sets `COLORFLOW_CHECKPOINT_DIR=/checkpoints` for raw `.pt` files.
 
-Training and model registration are on-demand on GKE. Applying `k8s/overlays/gke` starts the platform only. Trigger jobs explicitly when you want them:
+Training and model registration are on-demand on GKE. Trigger jobs explicitly when you want them:
 
 ```bash
 # start a training run
@@ -331,9 +375,11 @@ kubectl port-forward -n colorflow svc/mlflow 5002:5000
 # then in another terminal, promote the local champion into the GKE registry:
 uv run python services/registry/promote_local_model.py
 
-# then restart mlserver to pick up the new champion model:
-kubectl rollout restart deployment/mlserver -n colorflow
+# if MLServer and UI are not deployed yet, start them now:
+kubectl apply -k k8s/stages/gke/mlserver
 kubectl rollout status deployment/mlserver -n colorflow
+kubectl apply -k k8s/stages/gke/ui
+kubectl rollout status deployment/ui -n colorflow
 kubectl get pods -n colorflow
 
 ```
@@ -379,9 +425,11 @@ kubectl apply -k k8s/overlays/gke
 
 # Trigger training only when you want it:
 kubectl apply -k k8s/jobs/gke/trainer
+kubectl logs job/trainer -n colorflow
 
 # Trigger model registration only after training completes:
 kubectl apply -k k8s/jobs/gke/registry
+kubectl logs job/registry -n colorflow
 
 # stop the training and model registry jobs if they are still running:
 kubectl delete job trainer registry -n colorflow --ignore-not-found
