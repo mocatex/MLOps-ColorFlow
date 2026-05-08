@@ -21,7 +21,7 @@ Build the trainer image (~5 min on first build)
 > docker logout ghcr.io
 
 Set the external MLflow endpoint for local runs
-> export MLFLOW_TRACKING_URI=http://localhost:5001
+> export MLFLOW_TRACKING_URI=http://127.0.0.1:5001
 
 # Training & Hyper Parameter Search
 one-shot training

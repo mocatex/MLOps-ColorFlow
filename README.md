@@ -23,7 +23,7 @@ Build & Start MLFlow with postgres tracking stack
 > docker compose up -d postgres mlflow
 
 MLflow UI
-> open http://localhost:5001
+> open http://127.0.0.1:5001
 
 # Training & Hyper Parameter Search
 one-shot training

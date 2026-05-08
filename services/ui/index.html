@@ -225,7 +225,7 @@
 
         const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
         if (isLocalhost && window.location.port && window.location.port !== "8080") {
-          return `${window.location.protocol}//${window.location.hostname}:8080`;
+          return `${window.location.protocol}//127.0.0.1:8080`;
         }
 
         return "";
