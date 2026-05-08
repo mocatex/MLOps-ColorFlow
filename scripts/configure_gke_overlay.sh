@@ -23,22 +23,82 @@ REPOSITORY="${REPOSITORY:-colorflow}"
 IMAGE_TAG="${TAG:-${IMAGE_TAG:-latest}}"
 APP_HOST="${APP_HOST:-}"
 GCP_SERVICE_ACCOUNT_EMAIL="${GCP_SERVICE_ACCOUNT_EMAIL:?Set GCP_SERVICE_ACCOUNT_EMAIL to your Workload Identity service account email}"
+MLFLOW_ARTIFACT_STORAGE_MODE="${MLFLOW_ARTIFACT_STORAGE_MODE:-bucket}"
 
-if [ -n "${MLFLOW_ARTIFACT_ROOT:-}" ]; then
-  artifact_root="$MLFLOW_ARTIFACT_ROOT"
-else
-  : "${MLFLOW_ARTIFACT_BUCKET:?Set MLFLOW_ARTIFACT_BUCKET or MLFLOW_ARTIFACT_ROOT}"
-  artifact_root="gs://${MLFLOW_ARTIFACT_BUCKET}/artifacts"
-fi
+artifact_resources=""
+artifact_overlay_patches=""
+mlflow_stage_artifact_delete=""
+mlserver_stage_artifact_delete=""
+ui_stage_artifact_delete=""
+
+case "$MLFLOW_ARTIFACT_STORAGE_MODE" in
+  bucket)
+    if [ -n "${MLFLOW_ARTIFACT_ROOT:-}" ]; then
+      artifact_root="$MLFLOW_ARTIFACT_ROOT"
+    else
+      : "${MLFLOW_ARTIFACT_BUCKET:?Set MLFLOW_ARTIFACT_BUCKET or MLFLOW_ARTIFACT_ROOT}"
+      artifact_root="gs://${MLFLOW_ARTIFACT_BUCKET}/artifacts"
+    fi
+
+    artifact_overlay_patches=$(cat <<'EOF'
+  - path: mlflow-no-artifacts-volume-patch.yaml
+  - path: mlserver-no-artifacts-volume-patch.yaml
+EOF
+)
+
+    mlflow_stage_artifact_delete=$(cat <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+
+$patch: delete
+EOF
+)
+
+    mlserver_stage_artifact_delete="$mlflow_stage_artifact_delete"
+    ui_stage_artifact_delete="$mlflow_stage_artifact_delete"
+    ;;
+  filesystem)
+    : "${MLFLOW_ARTIFACT_NFS_SERVER:?Set MLFLOW_ARTIFACT_NFS_SERVER when MLFLOW_ARTIFACT_STORAGE_MODE=filesystem}"
+    MLFLOW_ARTIFACT_NFS_PATH="${MLFLOW_ARTIFACT_NFS_PATH:-/colorflow}"
+    MLFLOW_ARTIFACT_PVC_SIZE="${MLFLOW_ARTIFACT_PVC_SIZE:-10Gi}"
+    artifact_root="${MLFLOW_ARTIFACT_ROOT:-/outputs/mlruns}"
+
+    artifact_resources=$(cat <<'EOF'
+  - mlflow-artifacts-pv.yaml
+EOF
+)
+
+    artifact_overlay_patches=$(cat <<'EOF'
+  - path: mlflow-artifacts-pvc-patch.yaml
+EOF
+)
+    ;;
+  *)
+    echo "Unsupported MLFLOW_ARTIFACT_STORAGE_MODE: $MLFLOW_ARTIFACT_STORAGE_MODE" >&2
+    echo "Expected one of: bucket, filesystem" >&2
+    exit 1
+    ;;
+esac
 
 registry_host="${REGION}-docker.pkg.dev"
 image_prefix="${registry_host}/${PROJECT_ID}/${REPOSITORY}"
 
-cat > k8s/overlays/gke/kustomization.yaml <<EOF
+{
+cat <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+EOF
+
+if [ -n "$artifact_resources" ]; then
+  printf '%s\n' "$artifact_resources"
+fi
+
+cat <<EOF
   - checkpoints-bucket-pv.yaml
   - checkpoints-bucket-pvc.yaml
 images:
@@ -62,10 +122,16 @@ patches:
   - path: ingress-host-patch.yaml
   - path: runtime-serviceaccount-patch.yaml
   - path: mlflow-artifact-root-patch.yaml
-  - path: mlflow-no-artifacts-volume-patch.yaml
-  - path: mlserver-no-artifacts-volume-patch.yaml
+EOF
+
+if [ -n "$artifact_overlay_patches" ]; then
+  printf '%s\n' "$artifact_overlay_patches"
+fi
+
+cat <<'EOF'
   - path: mlserver-resources-patch.yaml
 EOF
+} > k8s/overlays/gke/kustomization.yaml
 
 mkdir -p k8s/stages/gke/mlflow k8s/stages/gke/mlserver k8s/stages/gke/ui
 
@@ -78,15 +144,13 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-cat > k8s/stages/gke/mlflow/exclude-resources-patch.yaml <<'EOF'
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlflow-artifacts
-  namespace: colorflow
+{
+if [ -n "$mlflow_stage_artifact_delete" ]; then
+  printf '%s\n' "$mlflow_stage_artifact_delete"
+  printf '%s\n' '---'
+fi
 
-$patch: delete
----
+cat <<'EOF'
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -142,6 +206,7 @@ metadata:
 
 $patch: delete
 EOF
+} > k8s/stages/gke/mlflow/exclude-resources-patch.yaml
 
 cat > k8s/stages/gke/mlserver/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -152,7 +217,8 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-cat > k8s/stages/gke/mlserver/exclude-resources-patch.yaml <<'EOF'
+{
+cat <<'EOF'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -168,14 +234,14 @@ metadata:
   namespace: colorflow
 
 $patch: delete
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlflow-artifacts
-  namespace: colorflow
+EOF
 
-$patch: delete
+if [ -n "$mlserver_stage_artifact_delete" ]; then
+  printf '%s\n' "---"
+  printf '%s\n' "$mlserver_stage_artifact_delete"
+fi
+
+cat <<'EOF'
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -248,6 +314,7 @@ metadata:
 
 $patch: delete
 EOF
+} > k8s/stages/gke/mlserver/exclude-resources-patch.yaml
 
 cat > k8s/stages/gke/ui/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -258,7 +325,8 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-cat > k8s/stages/gke/ui/exclude-resources-patch.yaml <<'EOF'
+{
+cat <<'EOF'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -274,14 +342,14 @@ metadata:
   namespace: colorflow
 
 $patch: delete
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlflow-artifacts
-  namespace: colorflow
+EOF
 
-$patch: delete
+if [ -n "$ui_stage_artifact_delete" ]; then
+  printf '%s\n' "---"
+  printf '%s\n' "$ui_stage_artifact_delete"
+fi
+
+cat <<'EOF'
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -346,6 +414,7 @@ metadata:
 
 $patch: delete
 EOF
+} > k8s/stages/gke/ui/exclude-resources-patch.yaml
 
 mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/registry
 
@@ -505,6 +574,46 @@ spec:
               value: ${artifact_root}
 EOF
 
+if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" = "filesystem" ]; then
+cat > k8s/overlays/gke/mlflow-artifacts-pv.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mlflow-artifacts-filestore
+spec:
+  capacity:
+    storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - nfsvers=3
+  nfs:
+    server: ${MLFLOW_ARTIFACT_NFS_SERVER}
+    path: ${MLFLOW_ARTIFACT_NFS_PATH}
+EOF
+
+cat > k8s/overlays/gke/mlflow-artifacts-pvc-patch.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  storageClassName: ""
+  volumeName: mlflow-artifacts-filestore
+EOF
+fi
+
+if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" != "filesystem" ]; then
+  rm -f k8s/overlays/gke/mlflow-artifacts-pv.yaml k8s/overlays/gke/mlflow-artifacts-pvc-patch.yaml
+fi
+
 cat > k8s/overlays/gke/runtime-serviceaccount-patch.yaml <<EOF
 apiVersion: v1
 kind: ServiceAccount
@@ -522,9 +631,20 @@ Configured GKE overlays with:
   REPOSITORY=${REPOSITORY}
   IMAGE_TAG=${IMAGE_TAG}
   APP_HOST=${APP_HOST:-<none>}
+  MLFLOW_ARTIFACT_STORAGE_MODE=${MLFLOW_ARTIFACT_STORAGE_MODE}
   MLFLOW_ARTIFACT_ROOT=${artifact_root}
   GCP_SERVICE_ACCOUNT_EMAIL=${GCP_SERVICE_ACCOUNT_EMAIL}
+EOF
 
+if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" = "filesystem" ]; then
+cat <<EOF
+  MLFLOW_ARTIFACT_NFS_SERVER=${MLFLOW_ARTIFACT_NFS_SERVER}
+  MLFLOW_ARTIFACT_NFS_PATH=${MLFLOW_ARTIFACT_NFS_PATH}
+  MLFLOW_ARTIFACT_PVC_SIZE=${MLFLOW_ARTIFACT_PVC_SIZE}
+EOF
+fi
+
+cat <<EOF
 Next:
   1. Push images with scripts/build_and_push_gke_images.sh using the same PROJECT_ID/REGION/REPOSITORY/IMAGE_TAG values.
   2. For ordered startup, apply k8s/stages/gke/mlflow, then k8s/stages/gke/mlserver, then k8s/stages/gke/ui.

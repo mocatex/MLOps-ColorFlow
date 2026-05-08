@@ -15,14 +15,6 @@ metadata:
 $patch: delete
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlflow-artifacts
-  namespace: colorflow
-
-$patch: delete
----
-apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: model-checkpoints-bucket

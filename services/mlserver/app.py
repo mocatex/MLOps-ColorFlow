@@ -1,5 +1,4 @@
 import os
-from threading import Lock
 from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Any
@@ -50,7 +49,6 @@ class ChampionModelServer:
         self.model: Any = None
         self.loaded_version: str | None = None
         self.load_error: str | None = None
-        self.load_lock = Lock()
         self.device = torch.device(os.environ.get("MODEL_DEVICE", "cpu"))
         self.image_size = int(os.environ.get("MODEL_IMAGE_SIZE", "256"))
 
@@ -61,60 +59,58 @@ class ChampionModelServer:
         self.served_model_name = app.state.served_model_name
         mlflow.set_tracking_uri(self.tracking_uri)
         self.client = MlflowClient(tracking_uri=self.tracking_uri)
+        self.ensure_model()
 
-    def ensure_model(self) -> None:
+    def resolve_target_version(self) -> str:
         if self.client is None:
             raise RuntimeError("MLflow client is not configured")
 
+        alias_version = self.client.get_model_version_by_alias(
+            self.registered_model_name,
+            self.registered_model_alias,
+        )
+        return alias_version.version
+
+    def load_model_for_version(self, target_version: str) -> Any:
+        model_uri = f"models:/{self.registered_model_name}/{target_version}"
         try:
-            alias_version = self.client.get_model_version_by_alias(
-                self.registered_model_name,
-                self.registered_model_alias,
+            model = mlflow.pytorch.load_model(
+                model_uri,
+                dst_path=None,
+                map_location=self.device,
             )
-            target_version = alias_version.version
-            if self.loaded_version == target_version and self.model is not None:
-                return
-
-            if not self.load_lock.acquire(blocking=False):
-                raise RuntimeError("Model load already in progress")
-
-            try:
-                alias_version = self.client.get_model_version_by_alias(
-                    self.registered_model_name,
-                    self.registered_model_alias,
-                )
-                target_version = alias_version.version
-                if self.loaded_version == target_version and self.model is not None:
-                    return
-
-                model_uri = f"models:/{self.registered_model_name}/{target_version}"
-                self.model = mlflow.pytorch.load_model(model_uri, dst_path=None)
-                self.model.to(self.device)
-                self.model.eval()
-                self.loaded_version = target_version
-                self.load_error = None
-            finally:
-                self.load_lock.release()
+            model.to(self.device)
+            model.eval()
         except Exception as error:
-            self.model = None
-            self.loaded_version = None
-            self.load_error = str(error)
-            raise
+            self.load_error = None
+            raise RuntimeError(str(error)) from error
+
+        return model
+
+    def ensure_model(self) -> tuple[Any, str]:
+        target_version = self.resolve_target_version()
+
+        if self.loaded_version == target_version and self.model is not None:
+            return self.model, target_version
+
+        model = self.load_model_for_version(target_version)
+        self.model = model
+        self.loaded_version = target_version
+        self.load_error = None
+        return model, target_version
 
     def predict(self, l_channel: np.ndarray) -> tuple[np.ndarray, str]:
-        self.ensure_model()
-        if self.model is None:
-            raise RuntimeError("Model is not loaded")
+        model, version = self.ensure_model()
 
         l_tensor = torch.from_numpy(l_channel).to(self.device)
         with torch.no_grad():
-            ab_tensor = self.model(l_tensor)
+            ab_tensor = model(l_tensor)
         rgb = lab_to_rgb(l_tensor, ab_tensor)
 
         if not np.isfinite(rgb).all():
             raise RuntimeError("Model returned a non-finite RGB image")
 
-        return rgb.astype(np.float32), self.loaded_version or "unknown"
+        return rgb.astype(np.float32), version
 
 
 def lab_to_rgb(l_tensor: torch.Tensor, ab_tensor: torch.Tensor) -> np.ndarray:
@@ -219,11 +215,11 @@ def live() -> dict[str, str]:
 @app.get("/v2/health/ready")
 def ready() -> dict[str, str]:
     try:
-        server.ensure_model()
+        _, version = server.ensure_model()
     except Exception as error:
         raise HTTPException(status_code=503, detail=f"Model not ready: {error}") from error
 
-    return {"status": "ready", "model_version": server.loaded_version or "unknown"}
+    return {"status": "ready", "model_version": version}
 
 
 @app.post("/v2/models/{model_name}/infer", response_model=InferenceResponse)

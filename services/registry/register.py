@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 
 import mlflow
 import requests
@@ -7,10 +8,17 @@ from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException  # type: ignore[import-not-found]
 
 
-def resolve_tracking_uri() -> str:
+def resolve_tracking_uri(experiment_name: str) -> str:
     explicit_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
     if explicit_tracking_uri:
         return explicit_tracking_uri
+
+    local_store = Path(__file__).resolve().parents[2] / "storage" / "mlops-flow"
+    if local_store.exists():
+        local_tracking_uri = local_store.as_uri()
+        client = MlflowClient(tracking_uri=local_tracking_uri)
+        if client.get_experiment_by_name(experiment_name) is not None:
+            return local_tracking_uri
 
     for candidate in ("http://mlflow:5000", "http://localhost:5001"):
         try:
@@ -21,7 +29,7 @@ def resolve_tracking_uri() -> str:
         return candidate
 
     raise RuntimeError(
-        "Could not reach MLflow at http://mlflow:5000 or http://localhost:5001. "
+        "Could not find a local file-backed MLflow store or reach MLflow at http://mlflow:5000 or http://localhost:5001. "
         "Set MLFLOW_TRACKING_URI explicitly before running register.py."
     )
 
@@ -33,24 +41,17 @@ def ensure_registered_model(client: MlflowClient, model_name: str) -> None:
         client.get_registered_model(model_name)
 
 
-def run_has_artifact(tracking_uri: str, run_id: str, artifact_path: str) -> bool:
+def run_has_artifact(client: MlflowClient, run_id: str, artifact_path: str) -> bool:
     try:
-        response = requests.get(
-            f"{tracking_uri.rstrip('/')}/api/2.0/mlflow/artifacts/list",
-            params={"run_id": run_id, "path": ""},
-            timeout=10,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
+        artifacts = client.list_artifacts(run_id)
+    except Exception:
         return False
 
-    artifacts = response.json().get("files", [])
-    return any(artifact.get("path") == artifact_path for artifact in artifacts)
+    return any(artifact.path == artifact_path for artifact in artifacts)
 
 
 def select_best_run(
     client: MlflowClient,
-    tracking_uri: str,
     experiment_id: str,
     metric_name: str,
     artifact_path: str,
@@ -68,7 +69,7 @@ def select_best_run(
     best_metric_value = None
 
     for run in runs:
-        if not run_has_artifact(tracking_uri, run.info.run_id, artifact_path):
+        if not run_has_artifact(client, run.info.run_id, artifact_path):
             continue
 
         metrics = run.data.metrics
@@ -134,8 +135,8 @@ def find_existing_model_version(
 
 
 def main() -> None:
-    tracking_uri = resolve_tracking_uri()
     experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "colorflow")
+    tracking_uri = resolve_tracking_uri(experiment_name)
     model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "colorflow-model")
     metric_name = os.environ.get("SELECTION_METRIC", "selection_score")
     model_artifact_path = os.environ.get("MLFLOW_MODEL_ARTIFACT_PATH", "generator")
@@ -149,7 +150,6 @@ def main() -> None:
 
     best_run, selected_metric_name, metric_value = select_best_run(
         client,
-        tracking_uri,
         experiment.experiment_id,
         metric_name,
         model_artifact_path,

@@ -5,6 +5,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN python -c "from fastai.vision.learner import create_body; import IPython; print('mlserver deps ok')"
 
 COPY app.py ./
 COPY colorflow ./colorflow

@@ -10,4 +10,4 @@ spec:
         - name: mlflow
           env:
             - name: MLFLOW_ARTIFACT_ROOT
-              value: gs://mlops-flow
+              value: /outputs/mlruns

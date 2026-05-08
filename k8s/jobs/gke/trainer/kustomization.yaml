@@ -5,7 +5,7 @@ resources:
 images:
   - name: colorflow-trainer
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer
-    newTag: latest
+    newTag: mlserver-mps-fix-20260508
 patches:
   - path: trainer-dvc-pull-patch.yaml
   - path: trainer-checkpoints-bucket-patch.yaml

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: artifact-uploader
+  namespace: colorflow
+  labels:
+    app: artifact-uploader
+spec:
+  serviceAccountName: colorflow-runtime
+  terminationGracePeriodSeconds: 1
+  containers:
+    - name: uploader
+      image: alpine:3.20
+      command:
+        - /bin/sh
+        - -c
+        - sleep infinity
+      volumeMounts:
+        - name: mlflow-artifacts
+          mountPath: /outputs
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+  volumes:
+    - name: mlflow-artifacts
+      persistentVolumeClaim:
+        claimName: mlflow-artifacts
