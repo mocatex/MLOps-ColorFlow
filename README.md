@@ -1,4 +1,51 @@
-# Kubernetes Cluster Scaffold
+# Whats happening
+
+## Locally
+
+There are 2 local storage locations you need to keep apart:
+
+1. `storage/mlops-flow`: Local MLflow artifact files live here. This is the local MLflow artifact tree.
+2. `storage/mlops-checkpoints`: Local raw training checkpoints live here. These are for training, resume, and inspection.
+
+Who uses what locally:
+
+1. `Trainer`: Writes raw checkpoints to `storage/mlops-checkpoints`. Logs the model artifact to local MLflow, which stores artifact files in `storage/mlops-flow`.
+2. `MLflow`: Stores local run metadata. Stores local model artifact files in `storage/mlops-flow`.
+3. `Registry job`: Reads runs and metrics from local MLflow. Selects the best run. Registers that model artifact in MLflow as the model to serve.
+4. `MLServer`: In the local Kubernetes setup, it asks MLflow which model version is `champion` and loads the registered model artifact from the MLflow artifact store. It does not load raw checkpoints from `storage/mlops-checkpoints` directly.
+5. `UI`: In the local Kubernetes setup, it calls MLServer for inference through the local ingress. It does not access MLflow storage or checkpoints directly.
+
+## On GKE
+
+There are 3 storage locations you need to keep apart:
+
+1. `PostgreSQL`: MLflow metadata lives here. This means runs, params, metrics, tags, model versions, and the `champion` alias.
+2. `/outputs/mlruns` on Filestore: MLflow model artifacts live here. This is the exported model that gets registered in MLflow and later loaded by MLServer.
+3. `/outputs/checkpoints` on Filestore: Raw training checkpoints live here. These are for training, resume, and inspection.
+
+Who uses what on GKE:
+
+1. `Trainer`: Writes raw checkpoints to `/outputs/checkpoints`. Logs the model artifact to MLflow.
+2. `MLflow`: Stores metadata in `PostgreSQL`. Stores model artifact files in `/outputs/mlruns`.
+3. `Registry job`: Reads runs and metrics from MLflow. Selects the best run. Registers that model artifact in MLflow as the model to serve. It does not load raw checkpoints directly.
+4. `MLServer`: Asks MLflow which model version is `champion`. Loads the registered model artifact from `/outputs/mlruns`. It does not load raw checkpoints from `/outputs/checkpoints`.
+5. `UI`: Calls MLServer for inference. It does not access storage directly.
+
+## The Important Distinction
+
+- `storage/mlops-checkpoints` and `/outputs/checkpoints` = raw training checkpoints
+- `storage/mlops-flow` and `/outputs/mlruns` = MLflow model artifacts
+- `MLServer` serves from MLflow model artifacts, not from raw checkpoints
+
+## If You Train Locally First And Then Promote To GKE
+
+1. Local training writes to `storage/mlops-flow` and `storage/mlops-checkpoints`.
+2. You copy those into GKE Filestore at `/outputs/mlruns` and `/outputs/checkpoints`.
+3. You promote the local champion into the GKE MLflow registry.
+4. MLServer then loads the registered model from `/outputs/mlruns`.
+
+
+# Activate Python Environment
 
 ```bash
 # create python environment and install dependencies
@@ -379,7 +426,7 @@ If you train locally and upload artifacts with the uploader pod, the artifact an
 
 The `colorflow-runtime` Kubernetes service account is used by MLflow, MLServer, the trainer job, the registry job, and the uploader pod. On GKE, bind it to your Google service account before you deploy if those workloads need Google Cloud access.
 
-The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image. The same overlay mounts the checkpoint bucket at `/checkpoints` and sets `COLORFLOW_CHECKPOINT_DIR=/checkpoints` for raw `.pt` files.
+The GKE trainer job overlay enables `DVC_PULL_DATA=true`, so the trainer can fetch `data/images.dvc` at startup instead of requiring the dataset to be baked into the image. Raw `.pt` checkpoints are written to the shared Filestore-backed outputs volume at `/outputs/checkpoints`.
 
 Training and model registration are on-demand on GKE. Trigger jobs explicitly when you want them:
 

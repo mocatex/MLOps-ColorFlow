@@ -32,13 +32,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--artifact-root",
-        default="gs://mlops-flow",
-        help="Bucket root that contains the mirrored MLflow artifact tree.",
+        default="/outputs/mlruns",
+        help="Root path that contains the mirrored MLflow artifact tree in the cluster.",
     )
     parser.add_argument(
         "--checkpoint-root",
-        default="gs://mlops-checkpoints",
-        help="Bucket root for mirrored raw checkpoints.",
+        default="/outputs/checkpoints",
+        help="Root path for mirrored raw checkpoints in the cluster.",
     )
     return parser.parse_args()
 

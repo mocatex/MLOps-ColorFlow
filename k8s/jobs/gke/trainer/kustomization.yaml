@@ -8,4 +8,3 @@ images:
     newTag: mlserver-mps-fix-20260508
 patches:
   - path: trainer-dvc-pull-patch.yaml
-  - path: trainer-checkpoints-bucket-patch.yaml
