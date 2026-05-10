@@ -40,5 +40,5 @@ htmlcov/
 *.swp
 *~
 
-
-storage/
+storage/mlops-checkpoints/
+storage/mlops-flow/
