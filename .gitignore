@@ -42,3 +42,4 @@ htmlcov/
 
 storage/mlops-checkpoints/
 storage/mlops-flow/
+services/trainer/data/images/
