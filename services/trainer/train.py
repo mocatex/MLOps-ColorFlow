@@ -1,4 +1,5 @@
 import os
+import warnings
 from pathlib import Path
 
 import hydra
@@ -25,6 +26,9 @@ def run(cfg: DictConfig) -> float:
     Split out from :func:`main` so other entry points (HPO sweeps, Dagster ops)
     can drive training without re-entering Hydra.
     """
+
+    if cfg.get("suppress_lab_warnings", True):
+        warnings.filterwarnings("ignore", message=".*negative Z values.*")
 
     device = torch.device("cpu")
 
@@ -78,6 +82,12 @@ def run(cfg: DictConfig) -> float:
         if cfg.training.checkpoint.resume_gan:
             start_epoch = restore_gan(model, cfg.training.checkpoint.resume_gan, device)
 
+        es_cfg = cfg.training.get("early_stopping")
+        es_patience = (
+            int(es_cfg.patience) if es_cfg and es_cfg.get("enabled", True) else None
+        )
+        es_min_delta = float(es_cfg.min_delta) if es_cfg else 0.0
+
         result = train_model(
             model,
             train_loader,
@@ -88,6 +98,8 @@ def run(cfg: DictConfig) -> float:
             config_snapshot=config_snapshot,
             sample_dir=output_dir / "samples",
             start_epoch=start_epoch,
+            patience=es_patience,
+            min_delta=es_min_delta,
         )
 
         # Emit a run-level selection metric for the registry job.

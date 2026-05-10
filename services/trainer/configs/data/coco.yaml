@@ -1,9 +1,9 @@
 source: local_directory
 path: ${oc.env:COLORFLOW_DATA_DIR,../../storage/mlops-coco/images} # populated by `dvc pull`; tracked via storage/mlops-coco/images.dvc
-external_data_size: 10000 # number of images in the dataset
-train_size: 8000 # images used for training, the rest are used for validation
+external_data_size: null # number of images in the dataset
+train_size: null # images used for training, the rest are used for validation
 image_size_1: 256
 image_size_2: 256
-batch_size: 16
+batch_size: 32
 num_workers: 0
 pin_memory: true

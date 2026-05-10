@@ -141,10 +141,13 @@ def train_model(
     config_snapshot: dict[str, Any] | None = None,
     sample_dir: str | Path | None = None,
     start_epoch: int = 0,
+    patience: int | None = None,
+    min_delta: float = 0.0,
 ) -> dict[str, float]:
     """GAN training loop. Returns final metric summary; logs per-epoch sample grids."""
     tracker = tracker or NoopTracker()
     best_val = float("inf")
+    epochs_since_improve = 0
     train_metrics: dict[str, float] = {}
 
     for epoch in range(start_epoch, epochs):
@@ -160,11 +163,19 @@ def train_model(
         tracker.log_metrics(metrics, step=epoch)
 
         val_l1 = val_metrics.get("val_loss_G_L1", float("inf"))
+        improved = val_l1 < best_val - min_delta
         best_val = min(best_val, val_l1)
+        epochs_since_improve = 0 if improved else epochs_since_improve + 1
+        if improved:
+            status = f"NEW BEST (best={best_val:.4f})"
+        elif patience is not None:
+            status = f"no improvement {epochs_since_improve}/{patience} (best={best_val:.4f})"
+        else:
+            status = f"no improvement (best={best_val:.4f})"
         print(
             f"[gan] epoch {epoch + 1}/{epochs} "
             f"train_G={train_metrics['train_loss_G']:.4f} "
-            f"val_G_L1={val_l1:.4f}"
+            f"val_G_L1={val_l1:.4f} | {status}"
         )
 
         if sample_dir is not None:
@@ -186,6 +197,14 @@ def train_model(
             saved = checkpointer.save(state, epoch=epoch + 1, metrics=metrics)
             if "best" in saved:
                 tracker.log_artifact(saved["best"], artifact_path="checkpoints")
+
+        if patience is not None and epochs_since_improve >= patience:
+            print(
+                f"[gan] early stopping at epoch {epoch + 1}: "
+                f"no improvement in val_loss_G_L1 for {patience} epochs "
+                f"(best={best_val:.4f})"
+            )
+            break
 
     return {"best_val_loss_G_L1": best_val, **train_metrics}
 

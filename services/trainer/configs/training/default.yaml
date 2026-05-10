@@ -1,4 +1,4 @@
-epochs: 2 
+epochs: 100
 
 pretrain:
   enabled: true
@@ -22,3 +22,8 @@ checkpoint:
   keep_last: 3
   resume_pretrain: null   # path to a pretrain_*.pt file
   resume_gan: null        # path to a gan_*.pt file
+
+early_stopping:
+  patience: 10
+  min_delta: 0.0
+  enabled: true
