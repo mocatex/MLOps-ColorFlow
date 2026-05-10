@@ -1,41 +1,39 @@
-# Whats happening
+# Overview
 
 ## Locally
 
-There are 2 local storage locations you need to keep apart:
+Storage locations:
 
-1. `storage/mlops-flow`: Local MLflow artifact files live here. This is the local MLflow artifact tree.
-2. `storage/mlops-checkpoints`: Local raw training checkpoints live here. These are for training, resume, and inspection.
+1. `PostgreSQL`: local MLflow metadata. Used by local MLflow.
+2. `storage/mlops-flow`: local MLflow artifact files. The trainer sends artifact/model files to MLflow through the MLflow tracking API, and MLflow saves those files here. Registry and MLServer access them through MLflow.
+3. `storage/mlops-checkpoints`: local raw training checkpoints. Written by trainer. Not read directly by MLServer.
+4. `storage/mlops-coco`: local training dataset. Read by trainer. Populated through DVC and mirrors the `gs://mlops-coco` bucket on GCS.
 
 Who uses what locally:
 
-1. `Trainer`: Writes raw checkpoints to `storage/mlops-checkpoints`. Logs the model artifact to local MLflow, which stores artifact files in `storage/mlops-flow`.
-2. `MLflow`: Stores local run metadata. Stores local model artifact files in `storage/mlops-flow`.
-3. `Registry job`: Reads runs and metrics from local MLflow. Selects the best run. Registers that model artifact in MLflow as the model to serve.
-4. `MLServer`: In the local Kubernetes setup, it asks MLflow which model version is `champion` and loads the registered model artifact from the MLflow artifact store. It does not load raw checkpoints from `storage/mlops-checkpoints` directly.
-5. `UI`: In the local Kubernetes setup, it calls MLServer for inference through the local ingress. It does not access MLflow storage or checkpoints directly.
+1. `Trainer`: reads `storage/mlops-coco`, writes `storage/mlops-checkpoints`, and sends params/metrics/tags/model files to MLflow through the MLflow tracking API.
+2. `MLflow`: writes metadata to local `PostgreSQL` and writes artifact/model files to `storage/mlops-flow`.
+3. `Registry job`: reads runs and artifacts through MLflow, registers the serving model.
+4. `MLServer`: asks MLflow for `champion`, loads the registered model from `storage/mlops-flow` through MLflow.
+5. `UI`: calls MLServer only.
 
 ## On GKE
 
-There are 3 storage locations you need to keep apart:
+Storage locations:
 
-1. `PostgreSQL`: MLflow metadata lives here. This means runs, params, metrics, tags, model versions, and the `champion` alias.
-2. `/outputs/mlruns` on Filestore: MLflow model artifacts live here. This is the exported model that gets registered in MLflow and later loaded by MLServer.
-3. `/outputs/checkpoints` on Filestore: Raw training checkpoints live here. These are for training, resume, and inspection.
+1. `PostgreSQL`: MLflow metadata. Used by cluster MLflow.
+2. `/outputs`: shared persistent volume mounted to the `colorflow-filestore` filestore on GKE.
+3. `/outputs/mlruns`: MLflow model artifacts. The trainer sends artifact/model files to MLflow through the MLflow tracking API, and MLflow saves those files here. Registry and MLServer access them through MLflow.
+4. `/outputs/checkpoints`: raw training checkpoints. Written by trainer. Not read directly by MLServer.
+5. `gs://mlops-coco`: training dataset bucket. Read by trainer.
 
 Who uses what on GKE:
 
-1. `Trainer`: Writes raw checkpoints to `/outputs/checkpoints`. Logs the model artifact to MLflow.
-2. `MLflow`: Stores metadata in `PostgreSQL`. Stores model artifact files in `/outputs/mlruns`.
-3. `Registry job`: Reads runs and metrics from MLflow. Selects the best run. Registers that model artifact in MLflow as the model to serve. It does not load raw checkpoints directly.
-4. `MLServer`: Asks MLflow which model version is `champion`. Loads the registered model artifact from `/outputs/mlruns`. It does not load raw checkpoints from `/outputs/checkpoints`.
-5. `UI`: Calls MLServer for inference. It does not access storage directly.
-
-## The Important Distinction
-
-- `storage/mlops-checkpoints` and `/outputs/checkpoints` = raw training checkpoints
-- `storage/mlops-flow` and `/outputs/mlruns` = MLflow model artifacts
-- `MLServer` serves from MLflow model artifacts, not from raw checkpoints
+1. `Trainer`: reads `gs://mlops-coco`, writes `/outputs/checkpoints`, and sends params/metrics/tags/model files to MLflow through the MLflow tracking API.
+2. `MLflow`: writes metadata to `PostgreSQL` and writes artifact/model files to `/outputs/mlruns`.
+3. `Registry job`: reads runs and artifacts through MLflow, registers the serving model.
+4. `MLServer`: asks MLflow for `champion`, loads the registered model from `/outputs/mlruns` through MLflow.
+5. `UI`: calls MLServer only.
 
 ## If You Train Locally First And Then Promote To GKE
 
