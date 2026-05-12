@@ -1,302 +1,62 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ColorFlow Inference</title>
-    <style>
-      :root {
-        --bg: #f6f0e8;
-        --panel: rgba(255, 252, 246, 0.85);
-        --ink: #19222e;
-        --muted: #5c6875;
-        --accent: #e76f51;
-        --accent-2: #2a9d8f;
-        --line: rgba(25, 34, 46, 0.12);
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
-        color: var(--ink);
-        background:
-          radial-gradient(circle at top left, rgba(231, 111, 81, 0.24), transparent 32%),
-          radial-gradient(circle at bottom right, rgba(42, 157, 143, 0.22), transparent 38%),
-          linear-gradient(135deg, #f5eadf, var(--bg));
-        display: grid;
-        place-items: center;
-        padding: 24px;
-      }
-
-      main {
-        width: min(1080px, 100%);
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 28px;
-        padding: 32px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 24px 80px rgba(25, 34, 46, 0.12);
-      }
-
-      .eyebrow {
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        font-size: 0.76rem;
-        color: var(--accent-2);
-        margin: 0 0 12px;
-      }
-
-      h1 {
-        font-size: clamp(2.2rem, 6vw, 4rem);
-        line-height: 0.95;
-        margin: 0;
-        max-width: 12ch;
-      }
-
-      p {
-        color: var(--muted);
-        font-size: 1.04rem;
-        line-height: 1.6;
-      }
-
-      .grid {
-        display: grid;
-        gap: 18px;
-        margin-top: 28px;
-      }
-
-      label {
-        font-size: 0.92rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: var(--muted);
-      }
-
-      input {
-        width: 100%;
-        padding: 16px 18px;
-        border-radius: 16px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.8);
-        font-size: 1.1rem;
-      }
-
-      input[type="file"] {
-        padding: 14px;
-      }
-
-      button {
-        width: fit-content;
-        padding: 14px 20px;
-        border: 0;
-        border-radius: 999px;
-        background: linear-gradient(135deg, var(--accent), #f4a261);
-        color: white;
-        font-size: 1rem;
-        cursor: pointer;
-      }
-
-      .result {
-        margin-top: 24px;
-        padding: 18px;
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.7);
-        border: 1px solid var(--line);
-      }
-
-      .result strong {
-        display: block;
-        font-size: 2rem;
-        margin-top: 6px;
-      }
-
-      .formula {
-        display: inline-block;
-        margin-top: 14px;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(42, 157, 143, 0.12);
-        color: #1d6d64;
-      }
-
-      .error {
-        color: #a61e4d;
-      }
-
-      .preview-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-top: 24px;
-      }
-
-      .card {
-        padding: 16px;
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.66);
-        border: 1px solid var(--line);
-      }
-
-      .card h2 {
-        margin: 0 0 12px;
-        font-size: 1rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-
-      .preview {
-        width: 100%;
-        aspect-ratio: 1;
-        object-fit: cover;
-        border-radius: 16px;
-        background: rgba(25, 34, 46, 0.08);
-        border: 1px solid var(--line);
-      }
-
-      .meta {
-        margin-top: 10px;
-        font-size: 0.95rem;
-        color: var(--muted);
-      }
-
-      @media (max-width: 760px) {
-        .preview-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <p class="eyebrow">Minimal Kubernetes Demo</p>
-      <h1>Registry-backed image colorization</h1>
-      <p>
-        Upload a grayscale or color image and the in-cluster inference API will colorize it
-        using the current MLflow <code>champion</code> model alias.
-      </p>
-      <p class="formula">Served source: MLflow Model Registry alias <code>champion</code></p>
-
-      <form id="inference-form" class="grid">
-        <div>
-          <label for="image-file">Input image</label>
-          <input id="image-file" name="image-file" type="file" accept="image/*" required />
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>ColorFlow | ML Colorizer</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <div id="fullscreen-drop-overlay">
+            <div class="overlay-content">
+                <span class="drop-icon">📥</span>
+                <h2>Drop image anywhere to colorize</h2>
+            </div>
         </div>
-        <button type="submit">Colorize image</button>
-      </form>
 
-      <section class="result" aria-live="polite">
-        <div id="status">Ready</div>
-        <strong id="prediction">No inference yet</strong>
-      </section>
+        <main class="container">
+            <header>
+                <h1>ColorFlow</h1>
+                <p>GAN-powered image colorization</p>
+            </header>
 
-      <section class="preview-grid">
-        <article class="card">
-          <h2>Input</h2>
-          <img id="input-preview" class="preview" alt="Uploaded source preview" />
-          <div id="input-meta" class="meta">No image selected</div>
-        </article>
-        <article class="card">
-          <h2>Colorized Output</h2>
-          <img id="output-preview" class="preview" alt="Colorized model output" />
-          <div id="output-meta" class="meta">Awaiting inference</div>
-        </article>
-      </section>
-    </main>
+            <div class="drop-zone" id="upload-prompt">
+                <span class="drop-icon">📁</span>
+                <p>Drag & drop a grayscale image anywhere</p>
+                <p class="text-sm">or</p>
+                <label class="btn outline">
+                    Browse File
+                    <input type="file" id="file-input" accept="image/*" hidden />
+                </label>
+            </div>
 
-    <script>
-      const form = document.getElementById("inference-form");
-      const imageInput = document.getElementById("image-file");
-      const status = document.getElementById("status");
-      const prediction = document.getElementById("prediction");
-      const inputPreview = document.getElementById("input-preview");
-      const outputPreview = document.getElementById("output-preview");
-      const inputMeta = document.getElementById("input-meta");
-      const outputMeta = document.getElementById("output-meta");
-      const apiBaseUrl = (() => {
-        if (window.COLORFLOW_API_BASE_URL) {
-          return window.COLORFLOW_API_BASE_URL.replace(/\/$/, "");
-        }
+            <div id="workspace" class="workspace hidden">
+                <div class="preview-panel">
+                    <div class="image-card">
+                        <h3>Input</h3>
+                        <img id="input-preview" src="" alt="Input" />
+                        <p id="input-meta" class="meta hidden"></p>
+                    </div>
+                    <div class="image-card">
+                        <h3>Colorized</h3>
+                        <div id="loading-spinner" class="loading hidden">
+                            <div class="spinner"></div>
+                            <p>Processing via MLServer...</p>
+                        </div>
+                        <img id="output-preview" src="" alt="Output" class="hidden" />
+                        <p id="output-meta" class="meta hidden"></p>
+                    </div>
+                </div>
 
-        const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-        if (isLocalhost && window.location.port && window.location.port !== "8080") {
-          return `${window.location.protocol}//127.0.0.1:8080`;
-        }
+                <div class="actions">
+                    <button id="reset-btn" class="btn outline">Colorize Another</button>
+                    <button id="download-btn" class="btn primary" disabled>Download Result</button>
+                </div>
+            </div>
+        </main>
 
-        return "";
-      })();
+        <script src="app.js"></script>
 
-      let inputPreviewUrl = "";
-      let outputPreviewUrl = "";
-
-      function setPreviewUrl(element, currentUrl, nextUrl) {
-        if (currentUrl) {
-          URL.revokeObjectURL(currentUrl);
-        }
-        element.src = nextUrl || "";
-        return nextUrl || "";
-      }
-
-      imageInput.addEventListener("change", () => {
-        const file = imageInput.files?.[0];
-        if (!file) {
-          inputPreviewUrl = setPreviewUrl(inputPreview, inputPreviewUrl, "");
-          inputMeta.textContent = "No image selected";
-          return;
-        }
-
-        inputPreviewUrl = setPreviewUrl(inputPreview, inputPreviewUrl, URL.createObjectURL(file));
-        inputMeta.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`;
-      });
-
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const file = imageInput.files?.[0];
-
-        if (!file) {
-          status.textContent = "Choose an image first";
-          status.className = "error";
-          return;
-        }
-
-        const body = new FormData();
-        body.append("image", file);
-
-        status.textContent = "Calling MLServer...";
-        status.className = "";
-        prediction.textContent = "Processing...";
-        outputMeta.textContent = "Generating colorized image";
-
-        try {
-          const response = await fetch(`${apiBaseUrl}/v2/models/colorflow/infer-image`, {
-            method: "POST",
-            body
-          });
-
-          if (!response.ok) {
-            const message = await response.text();
-            throw new Error(message || `Inference request failed with status ${response.status}`);
-          }
-
-          const blob = await response.blob();
-          const modelVersion = response.headers.get("X-Model-Version") || "unknown";
-          outputPreviewUrl = setPreviewUrl(outputPreview, outputPreviewUrl, URL.createObjectURL(blob));
-
-          status.textContent = `Inference complete with champion version ${modelVersion}`;
-          prediction.textContent = "Colorization complete";
-          outputMeta.textContent = `${blob.type || "image/png"} · model version ${modelVersion}`;
-        } catch (error) {
-          status.textContent = error.message;
-          status.className = "error";
-          prediction.textContent = "Inference failed";
-          outputMeta.textContent = "No output available";
-        }
-      });
-    </script>
-  </body>
-  </html>
+        <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    </body>
+</html>
