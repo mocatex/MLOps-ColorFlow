@@ -446,26 +446,37 @@ kubectl get pods -n colorflow -o wide
 If the current `champion` model was trained locally, copy its files into the shared persistent volume and promote it into the GKE MLflow registry like this:
 
 ```bash
-# assuming you first ran locally:
-uv run train.py
-uv run register.py
+# assuming you first ran locally and already have a local champion model:
+uv run python services/registry/register.py
+
+# in order to use kubectl, you need to have the cluster credentials set up locally with:
+gcloud container clusters get-credentials colorflow --region europe-west6
 
 # start a temporary uploader pod that mounts the shared artifact volume
 kubectl apply -k k8s/tools/gke/uploader
+# wait for the uploader pod to be ready before copying files
 kubectl wait --for=condition=Ready pod/artifact-uploader -n colorflow --timeout=120s
+# make sure the target directories exist before copying files
 kubectl exec -n colorflow artifact-uploader -- mkdir -p /outputs/mlruns /outputs/checkpoints
 
 # copy the local model files into the shared persistent volume
 kubectl cp storage/mlops-flow/. colorflow/artifact-uploader:/outputs/mlruns
 kubectl cp storage/mlops-checkpoints/. colorflow/artifact-uploader:/outputs/checkpoints
 
-# expose GKE MLflow locally, then promote the copied artifact into the GKE registry
-# open a tunnel to the mlflow service in GKE
-kubectl port-forward -n colorflow svc/mlflow 5002:5000
-# then in another terminal, promote the local champion into the GKE registry:
-uv run python services/registry/promote_local_model.py \
-  --source-tracking-uri "file://$PWD/storage/mlops-flow" \
-  --target-tracking-uri http://localhost:5002 \
+# get the list of mlserver pods
+kubectl get pods -n colorflow -l app=mlserver
+# take the pod name from that output, then:
+pod=mlserver-856cdf84df-mnjdw
+
+# copy the promote script into the mlserver pod so it can access the files
+# under /outputs and talk to the in-cluster MLflow service
+kubectl cp services/registry/promote_local_model.py \
+  colorflow/${pod}:/tmp/promote_local_model.py
+
+# then run it inside the pod:
+kubectl exec -n colorflow ${pod} -- python /tmp/promote_local_model.py \
+  --source-tracking-uri file:///outputs/mlruns \
+  --target-tracking-uri http://mlflow:5000 \
   --artifact-root /outputs/mlruns \
   --checkpoint-root /outputs/checkpoints
 
@@ -481,7 +492,100 @@ kubectl get pods -n colorflow
 # all pods shuld have READY set to 1/1 and STATUS to Running.
 ```
 
-# Workflow
+# Update MLServer to GKE
+
+```bash
+# in the project root
+
+# set the environment variables for your GKE cluster and Artifact Registry
+set -a
+. ./scripts/gke.env
+export TAG=mlserver-app-fix-20260513
+set +a
+
+# authenticate your local docker client to push to Artifact Registry
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+```
+
+For repo-native flow:
+
+```bash
+# this builds all images and pushes them to Artifact Registry, then updates the GKE deployment:
+./scripts/build_and_push_gke_images.sh scripts/gke.env
+kubectl apply -k k8s/overlays/gke
+kubectl rollout status deployment/mlserver -n colorflow
+kubectl get pods -n colorflow -l app=mlserver
+```
+
+If you want the fastest one-off update for just MLServer, do this instead:
+
+```bash
+# use an existing base image TAG
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg BASE_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlflow:mlserver-mps-fix-20260508" \
+  --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlserver:${TAG}" \
+  --push \
+  services/mlserver
+
+kubectl set image deployment/mlserver \
+  mlserver="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlserver:${TAG}" \
+  -n colorflow
+
+# this can take a few minutes and even be unavailable for a short time during the rollout:
+kubectl rollout status deployment/mlserver -n colorflow
+# check the new image is running:
+kubectl get pods -n colorflow -l app=mlserver
+kubectl logs -n colorflow <new-pod-name>
+```
+
+If you are on local kind instead of GKE, the update path is:
+
+```bash
+docker build -t colorflow-mlserver:local services/mlserver
+kind load docker-image colorflow-mlserver:local --name colorflow
+kubectl rollout restart deployment/mlserver -n colorflow
+kubectl rollout status deployment/mlserver -n colorflow
+```
+
+# Update UI to GKE
+
+```bash
+# in the project root
+
+# set the environment variables for your GKE cluster and Artifact Registry
+set -a
+. ./scripts/gke.env
+export TAG=mlserver-app-fix-20260513
+set +a
+
+# authenticate your local docker client to push to Artifact Registry
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+```
+
+For repo-native flow see above. For a one-off update:
+
+```bash
+# build and push the new UI image to Artifact Registry:
+docker buildx build \
+  --platform linux/amd64 \
+  --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-ui:${TAG}" \
+  --push \
+  services/ui
+
+# update the GKE deployment to use the new image:
+kubectl set image deployment/ui \
+  ui="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-ui:${TAG}" \
+  -n colorflow
+
+# this can take a few minutes and even be unavailable for a short time during the rollout:
+kubectl rollout status deployment/ui -n colorflow
+# check the new image is running:
+kubectl get pods -n colorflow -l app=ui
+kubectl logs -n colorflow <new-pod-name>
+```
+
+# General GKE Troubleshooting
 
 Fix workload identity when cluster workloads need Google Cloud access:
 

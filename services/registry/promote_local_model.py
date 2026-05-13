@@ -1,7 +1,9 @@
 import argparse
+from pathlib import Path
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
+import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException  # type: ignore[import-not-found]
 
@@ -33,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--artifact-root",
         default="/outputs/mlruns",
-        help="Root path that contains the mirrored MLflow artifact tree in the cluster.",
+        help="Kept for backward compatibility; no longer needed for upload-based promotion.",
     )
     parser.add_argument(
         "--checkpoint-root",
@@ -50,9 +52,11 @@ def ensure_registered_model(client: MlflowClient, model_name: str) -> None:
         client.get_registered_model(model_name)
 
 
-def build_artifact_source(artifact_root: str, experiment_id: str, run_id: str, artifact_path: str) -> str:
-    base = artifact_root.rstrip("/")
-    return f"{base}/{experiment_id}/{run_id}/artifacts/{artifact_path.strip('/')}"
+def ensure_experiment(client: MlflowClient, experiment_name: str) -> str:
+    experiment = client.get_experiment_by_name(experiment_name)
+    if experiment is not None:
+        return experiment.experiment_id
+    return client.create_experiment(experiment_name)
 
 
 def remap_checkpoint_uri(checkpoint_uri: str | None, checkpoint_root: str) -> str | None:
@@ -70,19 +74,53 @@ def remap_checkpoint_uri(checkpoint_uri: str | None, checkpoint_root: str) -> st
     return f"{checkpoint_root.rstrip('/')}/{checkpoint_name}"
 
 
+def resolve_source_model_uri(
+    source_tracking_uri: str,
+    artifact_root: str,
+    experiment_id: str,
+    run_id: str,
+    artifact_path: str,
+) -> str:
+    if source_tracking_uri.startswith("file://"):
+        mirrored_path = (
+            Path(artifact_root)
+            / experiment_id
+            / run_id
+            / "artifacts"
+            / artifact_path
+        )
+        if mirrored_path.exists():
+            return str(mirrored_path)
+
+    return f"runs:/{run_id}/{artifact_path}"
+
+
 def find_existing_target_version(
     client: MlflowClient,
     model_name: str,
     promoted_run_id: str,
-    artifact_source: str,
+    promoted_from_tracking_uri: str,
 ):
     for model_version in client.search_model_versions(f"name='{model_name}'"):
         tags = model_version.tags or {}
-        if tags.get("promoted_run_id") == promoted_run_id:
-            return model_version
-        if model_version.source == artifact_source:
+        if (
+            tags.get("promoted_run_id") == promoted_run_id
+            and tags.get("promoted_from_tracking_uri") == promoted_from_tracking_uri
+        ):
             return model_version
     return None
+
+
+def wait_for_model_version(client: MlflowClient, model_name: str, version: str) -> None:
+    for _ in range(36):
+        model_version = client.get_model_version(model_name, version)
+        if model_version.status == "READY":
+            return
+        import time
+
+        time.sleep(5)
+
+    raise RuntimeError(f"Model version {model_name}/{version} did not become READY")
 
 
 def main() -> None:
@@ -100,12 +138,12 @@ def main() -> None:
         raise RuntimeError("Source champion model has no run_id to promote")
 
     source_run = source_client.get_run(run_id)
-    artifact_source = build_artifact_source(
-        args.artifact_root,
-        source_run.info.experiment_id,
-        run_id,
-        artifact_path,
-    )
+    source_experiment = source_client.get_experiment(source_run.info.experiment_id)
+    if source_experiment is None:
+        raise RuntimeError(
+            f"Source experiment '{source_run.info.experiment_id}' does not exist"
+        )
+
     selected_checkpoint_uri = remap_checkpoint_uri(
         source_tags.get("selected_checkpoint_uri") or source_run.data.tags.get("checkpoint_uri"),
         args.checkpoint_root,
@@ -116,35 +154,68 @@ def main() -> None:
         target_client,
         args.model_name,
         run_id,
-        artifact_source,
+        args.source_tracking_uri,
     )
 
     if target_version is None:
-        target_version = target_client.create_model_version(
-            name=args.model_name,
-            source=artifact_source,
-            tags={
-                "promoted_from_tracking_uri": args.source_tracking_uri,
-                "promoted_run_id": run_id,
-                "selected_run_id": run_id,
-                "selected_artifact_path": artifact_path,
-                **(
-                    {"selected_metric_name": source_tags["selected_metric_name"]}
-                    if "selected_metric_name" in source_tags
-                    else {}
-                ),
-                **(
-                    {"selected_metric": source_tags["selected_metric"]}
-                    if "selected_metric" in source_tags
-                    else {}
-                ),
-                **(
-                    {"selected_checkpoint_uri": selected_checkpoint_uri}
-                    if selected_checkpoint_uri
-                    else {}
-                ),
-            },
+        promotion_tags = {
+            "promoted_from_tracking_uri": args.source_tracking_uri,
+            "promoted_run_id": run_id,
+            "promoted_source_model_version": source_version.version,
+            "selected_run_id": run_id,
+            "selected_artifact_path": artifact_path,
+            **(
+                {"selected_metric_name": source_tags["selected_metric_name"]}
+                if "selected_metric_name" in source_tags
+                else {}
+            ),
+            **(
+                {"selected_metric": source_tags["selected_metric"]}
+                if "selected_metric" in source_tags
+                else {}
+            ),
+            **(
+                {"selected_checkpoint_uri": selected_checkpoint_uri}
+                if selected_checkpoint_uri
+                else {}
+            ),
+        }
+
+        mlflow.set_tracking_uri(args.source_tracking_uri)
+        source_model_uri = resolve_source_model_uri(
+            args.source_tracking_uri,
+            args.artifact_root,
+            source_run.info.experiment_id,
+            run_id,
+            artifact_path,
         )
+        model = mlflow.pytorch.load_model(source_model_uri, map_location="cpu")
+
+        target_experiment_id = ensure_experiment(target_client, source_experiment.name)
+        mlflow.set_tracking_uri(args.target_tracking_uri)
+        with mlflow.start_run(
+            experiment_id=target_experiment_id,
+            run_name=f"promote-{args.model_name}-{run_id[:8]}",
+        ) as promotion_run:
+            mlflow.set_tags(promotion_tags)
+            selected_metric = source_tags.get("selected_metric")
+            if selected_metric is not None:
+                try:
+                    mlflow.log_metric("selected_metric", float(selected_metric))
+                except ValueError:
+                    pass
+            mlflow.pytorch.log_model(model, artifact_path=artifact_path)
+
+        model_uri = f"runs:/{promotion_run.info.run_id}/{artifact_path}"
+        target_version = mlflow.register_model(model_uri=model_uri, name=args.model_name)
+        wait_for_model_version(target_client, args.model_name, target_version.version)
+        for key, value in promotion_tags.items():
+            target_client.set_model_version_tag(
+                args.model_name,
+                target_version.version,
+                key,
+                value,
+            )
         action = "Created"
     else:
         action = "Reused"
@@ -153,7 +224,7 @@ def main() -> None:
 
     print(
         f"{action} {args.model_name} version {target_version.version} on {args.target_tracking_uri} "
-        f"from {artifact_source} and set alias '{args.alias}'"
+        f"from source run {run_id} and set alias '{args.alias}'"
     )
 
 
