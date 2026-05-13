@@ -50,6 +50,59 @@ def run_has_artifact(client: MlflowClient, run_id: str, artifact_path: str) -> b
     return any(artifact.path == artifact_path for artifact in artifacts)
 
 
+def metric_sort_key(metric_name: str, metric_value: float, tie_breaker: int = 0):
+    if metric_name == "selection_score":
+        return (2, metric_value, tie_breaker)
+    if metric_name == "best_val_loss_G_L1":
+        return (1, -metric_value, tie_breaker)
+    if metric_name == "val_loss_G_L1":
+        return (0, -metric_value, tie_breaker)
+    raise ValueError(f"Unsupported metric for ranking: {metric_name}")
+
+
+def get_model_version_metric(model_version):
+    tags = model_version.tags or {}
+    metric_name = tags.get("selected_metric_name")
+    metric_value = tags.get("selected_metric")
+    if metric_name is None or metric_value is None:
+        return None
+
+    try:
+        metric_value_float = float(metric_value)
+    except ValueError:
+        return None
+
+    try:
+        ranking_key = metric_sort_key(metric_name, metric_value_float)
+    except ValueError:
+        return None
+
+    return metric_name, metric_value_float, ranking_key
+
+
+def get_best_existing_model_version(
+    client: MlflowClient,
+    model_name: str,
+    exclude_version: str,
+):
+    best_version = None
+    best_metric = None
+
+    for model_version in client.search_model_versions(f"name='{model_name}'"):
+        if model_version.version == exclude_version:
+            continue
+
+        model_metric = get_model_version_metric(model_version)
+        if model_metric is None:
+            continue
+
+        if best_metric is None or model_metric[2] > best_metric[2]:
+            best_version = model_version
+            best_metric = model_metric
+
+    return best_version, best_metric
+
+
 def select_best_run(
     client: MlflowClient,
     experiment_id: str,
@@ -77,15 +130,27 @@ def select_best_run(
         if metric_name in metrics:
             candidate_metric_name = metric_name
             candidate_metric_value = float(metrics[metric_name])
-            candidate_key = (2, candidate_metric_value, run.info.start_time)
+            candidate_key = metric_sort_key(
+                candidate_metric_name,
+                candidate_metric_value,
+                run.info.start_time,
+            )
         elif "best_val_loss_G_L1" in metrics:
             candidate_metric_name = "best_val_loss_G_L1"
             candidate_metric_value = float(metrics["best_val_loss_G_L1"])
-            candidate_key = (1, -candidate_metric_value, run.info.start_time)
+            candidate_key = metric_sort_key(
+                candidate_metric_name,
+                candidate_metric_value,
+                run.info.start_time,
+            )
         elif "val_loss_G_L1" in metrics:
             candidate_metric_name = "val_loss_G_L1"
             candidate_metric_value = float(metrics["val_loss_G_L1"])
-            candidate_key = (0, -candidate_metric_value, run.info.start_time)
+            candidate_key = metric_sort_key(
+                candidate_metric_name,
+                candidate_metric_value,
+                run.info.start_time,
+            )
         else:
             continue
 
@@ -96,7 +161,7 @@ def select_best_run(
             best_metric_value = candidate_metric_value
 
     if best_run is not None:
-        return best_run, best_metric_name, best_metric_value
+        return best_run, best_metric_name, best_metric_value, best_key
 
     raise RuntimeError("No finished runs with the selection metric were found to register")
 
@@ -148,7 +213,7 @@ def main() -> None:
     if experiment is None:
         raise RuntimeError(f"Experiment '{experiment_name}' does not exist")
 
-    best_run, selected_metric_name, metric_value = select_best_run(
+    best_run, selected_metric_name, metric_value, candidate_key = select_best_run(
         client,
         experiment.experiment_id,
         metric_name,
@@ -183,13 +248,37 @@ def main() -> None:
             "selected_checkpoint_uri",
             selected_checkpoint_uri,
         )
-    client.set_registered_model_alias(model_name, "champion", model_version.version)
+
+    candidate_model_metric = get_model_version_metric(model_version)
+    best_existing_version, best_existing_metric = get_best_existing_model_version(
+        client,
+        model_name,
+        exclude_version=model_version.version,
+    )
+
+    champion_version = model_version
+    if candidate_model_metric is not None and best_existing_metric is not None:
+        existing_metric_name, existing_metric_value, existing_key = best_existing_metric
+        if existing_key >= candidate_model_metric[2]:
+            champion_version = best_existing_version
+            print(
+                f"Kept champion version {best_existing_version.version} using "
+                f"{existing_metric_name}={existing_metric_value}; "
+                f"candidate run {run_id} scored {selected_metric_name}={metric_value}."
+            )
+
+    client.set_registered_model_alias(model_name, "champion", champion_version.version)
 
     action = "Reused" if reused_existing_version else "Registered"
+    alias_message = (
+        "and promoted to champion"
+        if champion_version.version == model_version.version
+        else f"and kept champion on version {champion_version.version}"
+    )
     print(
         f"{action} model '{model_name}' version {model_version.version} "
         f"for run {run_id} using {selected_metric_name}={metric_value} "
-        f"from artifact path '{model_artifact_path}'"
+        f"from artifact path '{model_artifact_path}' {alias_message}"
     )
 
 

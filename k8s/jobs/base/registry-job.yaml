@@ -26,6 +26,9 @@ spec:
               value: colorflow-model
             - name: SELECTION_METRIC
               value: selection_score
+          volumeMounts:
+            - name: mlflow-artifacts
+              mountPath: /outputs
           resources:
             requests:
               cpu: 50m
@@ -33,3 +36,7 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+      volumes:
+        - name: mlflow-artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts

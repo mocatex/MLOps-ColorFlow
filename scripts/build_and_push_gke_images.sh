@@ -48,7 +48,6 @@ docker buildx build \
 
 docker buildx build \
   --platform "${PLATFORM}" \
-  --build-arg BASE_IMAGE="${MLFLOW_IMAGE}" \
   --tag "${IMAGE_PREFIX}/colorflow-registry:${TAG}" \
   --push \
   services/registry

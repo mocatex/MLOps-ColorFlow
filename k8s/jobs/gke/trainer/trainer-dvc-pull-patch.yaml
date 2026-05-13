@@ -8,8 +8,18 @@ spec:
     spec:
       containers:
         - name: trainer
+          args:
+            - train.py
+            - training.pretrain.enabled=false
+            - training.epochs=1
+            - data.batch_size=1
+            - data.num_workers=2
+            - data.image_size_1=128
+            - data.image_size_2=128
+            - data.external_data_size=2
+            - data.train_size=1
           env:
-            - name: DVC_PULL_DATA
-              value: "true"
-            - name: DVC_PULL_TARGET
-              value: images.dvc
+            - name: COLORFLOW_DATA_DIR
+              value: /app/storage/mlops-coco/images
+            - name: GCS_DATA_URI
+              value: gs://mlops-coco

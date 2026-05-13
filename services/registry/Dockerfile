@@ -1,5 +1,4 @@
-ARG BASE_IMAGE=colorflow-mlflow:local
-FROM ${BASE_IMAGE}
+FROM ghcr.io/mlflow/mlflow:v2.22.0
 
 WORKDIR /app
 

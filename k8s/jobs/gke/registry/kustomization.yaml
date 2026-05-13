@@ -5,4 +5,4 @@ resources:
 images:
   - name: colorflow-registry
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry
-    newTag: mlserver-mps-fix-20260508
+    newTag: registry-best-existing-20260513
