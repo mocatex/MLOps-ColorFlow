@@ -201,7 +201,7 @@ kubectl get ingress -n colorflow -w # watch it
 If the current `champion` model was trained locally, copy its files into the shared persistent volume and promote it into the GKE MLflow registry like this:
 
 ```bash
-# assuming you first ran locally and already have a local champion model:
+# run the local registry job to select the champion. This will save the champions metadata to `storage/mlops-flow`.
 uv run python services/registry/register.py
 
 # in order to use kubectl, you need to have the cluster credentials set up locally with:
@@ -233,6 +233,8 @@ kubectl exec -n colorflow ${pod} -- python /tmp/promote_local_model.py \
   --target-tracking-uri http://mlflow:5000 \
   --artifact-root /outputs/mlruns \
   --checkpoint-root /outputs/checkpoints
+# this should output something like: 
+# Created colorflow-model version 4 on http://mlflow:5000 from source run 87530d26681a423eac7cadb68d074ce9 and set alias 'champion'
 
 # remove the temporary uploader pod when you are done
 kubectl delete -k k8s/tools/gke/uploader
@@ -369,7 +371,7 @@ docker buildx build \
 # run trainer first, wait for it to complete, then run registry:
 kubectl delete job trainer registry -n colorflow --ignore-not-found && \
 kubectl apply -k k8s/jobs/gke/trainer && \
-kubectl wait --for=condition=complete job/trainer -n colorflow && \
+kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=24h && \
 kubectl logs job/trainer -n colorflow
 
 # then trigger the registry job to register the champion model after training completes:
@@ -378,13 +380,15 @@ kubectl apply -k k8s/jobs/gke/registry && \
 kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m && \
 kubectl logs job/registry -n colorflow
 
+# watch the trainer job logs live while it's running:
+kubectl logs -f job/trainer -n colorflow
 # watch the trainer job status separately if needed:
 kubectl get job trainer -n colorflow -w
 # or watch the pod status:
 kubectl get pods -n colorflow -l job-name=trainer -w
 ```
 
-To view the experiment in MLflow UI in the cluster:
+## View MLflow UI in the cluster:
 
 ```bash
 # confirm the mlflow service exists first:
@@ -392,7 +396,7 @@ kubectl get svc mlflow -n colorflow
 # port forward the in-cluster MLflow service to your local machine:
 kubectl port-forward -n colorflow svc/mlflow 5002:5000
 # then open the experiment page in your browser:
-#http://127.0.0.1:5002/#/experiments/1
+# http://127.0.0.1:5002/#/experiments/1
 ```
 
 ## Inspect the training job

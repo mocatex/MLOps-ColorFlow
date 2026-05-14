@@ -36,9 +36,13 @@ Initialize GAN training if `pretrain_best.pt` is already your preferred supervis
 
 ```bash
 cd services/trainer
-uv run python train.py \
+sudo caffeinate -i nice -n -10 uv run python train.py \
   training.checkpoint.resume_pretrain=../../storage/mlops-checkpoints/pretrain_best.pt \
-  training.pretrain.enabled=false
+  training.pretrain.enabled=false \
+  training.early_stopping.patience=20 \
+  training.epochs=200 \
+  training.checkpoint.resume_gan=../../storage/mlops-checkpoints/gan_best.pt \
+  data.batch_size=64
 ```
 
 # Prevent Sleep and enhance Performance on macOS
@@ -47,19 +51,16 @@ Apple Silicon laptops may throttle performance or sleep during long runs. Use `c
 
 ```bash
 cd services/trainer
-sudo caffeinate -dimsu nice -n -10 uv run python train.py \
+sudo caffeinate -i nice -n -10 uv run python train.py \
   training.checkpoint.resume_pretrain=../../storage/mlops-checkpoints/pretrain_best.pt \
   training.pretrain.enabled=false
-```
 
-`caffeinate -dimsu` is a macOS utility to prevent the system from sleeping while the command is running. If you are on another OS, just run the command without it.
-
-```
--i: idle sleep. prevent the system from sleeping due to inactivity
--d: display sleep. prevent the display from sleeping
--m: disk sleep. prevent the system from sleeping due to disk inactivity
--s: system sleep. prevent the system from sleeping due to user inactivity
--u: declares user activity. This option is recommended when used with -d to prevent the display from sleeping due to user inactivity.
+# caffeinate options:
+# -i: idle sleep. prevent the system from sleeping due to user inactivity
+# -d: display sleep. prevent the display from sleeping
+# -m: disk sleep. prevent the disk from sleeping
+# -s: system sleep. prevent the system from sleeping when plugged in
+# -u: declares user activity. prevent the system from sleeping by simulating user activity
 ```
 
 ```bash
