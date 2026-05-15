@@ -11,5 +11,5 @@ spec:
   mountOptions:
     - nfsvers=3
   nfs:
-    server: 10.233.75.186
+    server: 10.60.111.146
     path: /colorflow

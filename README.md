@@ -63,6 +63,10 @@ source .venv/bin/activate
 kubectl get jobs -n colorflow
 # to see the pods created by the jobs:
 kubectl get pods -n colorflow -o wide
+# list specific pods
+kubectl get pods -n colorflow -l app=trainer
+# describe specific pods
+kubectl describe pods -n colorflow -l app=trainer
 ```
 
 # Google Kubernetes Engine Setup
@@ -86,7 +90,7 @@ gcloud services enable file.googleapis.com \
 # create a Filestore instance with a 1TiB shared volume
 # this is where MLflow and MLServer will read and write artifacts on GKE
 # the filestore should then show up under console.cloud.google.com/filestore/instances
-gcloud filestore instances create colorflow-filestore \
+gcloud filestore instances create colorflow-filestore2 \
   --project mlops-colorflow \
   --location europe-west6-b \
   --tier BASIC_HDD \
@@ -95,7 +99,7 @@ gcloud filestore instances create colorflow-filestore \
   # check your VPC network name (should be "default" if you haven't created any custom VPCs)
 
 # get the private IP with:
-gcloud filestore instances describe colorflow-filestore \
+gcloud filestore instances describe colorflow-filestore2 \
   --project mlops-colorflow \
   --location europe-west6-b \
   --format="value(networks[0].ipAddresses[0])"
@@ -103,6 +107,10 @@ gcloud filestore instances describe colorflow-filestore \
 # Then put that value into scripts/gke.env:
 MLFLOW_ARTIFACT_NFS_SERVER=10.x.x.x
 MLFLOW_ARTIFACT_NFS_PATH=/colorflow
+
+# remove the old claim and volume objects, if they exist
+kubectl delete pvc mlflow-artifacts -n colorflow
+kubectl delete pv mlflow-artifacts-filestore
 ```
 
 # Build and Deploy to GKE
@@ -140,7 +148,7 @@ unset TAG
 set -a # start exporting all variables to the environment
 . ./scripts/gke.env
 # use a fresh tag whenever you change the image; this avoids reusing cached `latest`
-export TAG=mlserver-deps-fix-20260508
+export TAG=new-filestore-fix-20260513
 set +a # stop exporting all variables
 
 # configure all GKE overlay placeholders from that one file
@@ -150,6 +158,8 @@ set +a # stop exporting all variables
 ./scripts/build_and_push_gke_images.sh scripts/gke.env
 # start MLflow first:
 kubectl apply -k k8s/stages/gke/mlflow
+# in case it gets stuck, you can scale it down to 0 and back up to force it to restart:
+kubectl scale deployment/mlflow -n colorflow --replicas=0
 # both should return "successfully rolled out" before you proceed. this can take a few minutes:
 kubectl rollout status deployment/postgres -n colorflow 
 kubectl rollout status deployment/mlflow -n colorflow
@@ -454,6 +464,12 @@ kubectl port-forward -n colorflow svc/ui 8080:80
 
 # General GKE Troubleshooting
 
+Remove any pods
+
+```bash
+kubectl scale deployment/mlserver -n colorflow --replicas=0
+```
+
 Fix workload identity when cluster workloads need Google Cloud access:
 
 ```bash
@@ -502,4 +518,11 @@ Delete the cluster:
 gcloud container clusters list --region europe-west6
 # delete the whole cluster if you want to tear down everything:
 gcloud container clusters delete colorflow-cluster --region europe-west6 --project mlops-colorflow
+```
+
+# Inspect Filestore
+
+```bash
+# list all filestore instances in the region to find the name of your filestore:
+gcloud filestore instances list --region europe-west6
 ```
