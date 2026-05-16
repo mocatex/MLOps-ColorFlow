@@ -71,7 +71,7 @@ jobs:
                   export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-trainer:${TAG}"
 
                   # Build and push just the trainer image
-                  docker buildx build --platform linux/amd64 -f services/trainer/Dockerfile -t $IMAGE --push .
+                  docker buildx build --platform linux/amd64 -f services/trainer/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t $IMAGE --push .
 
                   # Dynamically update the Kustomize file with the new image tag
                   cd k8s/jobs/gke/trainer

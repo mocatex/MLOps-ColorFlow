@@ -355,9 +355,9 @@ spec:
         - name: trainer
           env:
             - name: DVC_PULL_DATA
-              value: "true"
-            - name: DVC_PULL_TARGET
-              value: images.dvc
+              value: "false"
+            - name: GCS_DATA_URI
+              value:"gs://mlops-coco/images"
 EOF
 
 cat > k8s/jobs/gke/trainer/kustomization.yaml <<EOF
