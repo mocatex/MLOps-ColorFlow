@@ -10,7 +10,7 @@ env:
     REGION: europe-west6
     CLUSTER_NAME: colorflow
     # Replace with your actual Project Number!
-    WORKLOAD_IDENTITY_PROVIDER: "projects/YOUR_PROJECT_NUMBER_HERE/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+    WORKLOAD_IDENTITY_PROVIDER: "projects/260943884277/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
     SERVICE_ACCOUNT: "github-actions-sa@mlops-colorflow.iam.gserviceaccount.com"
 
 jobs:
