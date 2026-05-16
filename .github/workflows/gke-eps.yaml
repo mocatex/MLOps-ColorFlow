@@ -9,9 +9,9 @@ env:
     PROJECT_ID: mlops-colorflow
     REGION: europe-west6
     CLUSTER_NAME: colorflow
-    # Keep your specific Project Number here!
     WORKLOAD_IDENTITY_PROVIDER: "projects/260943884277/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
     SERVICE_ACCOUNT: "github-actions-sa@mlops-colorflow.iam.gserviceaccount.com"
+    REGISTRY_HOST: europe-west6-docker.pkg.dev
 
 jobs:
     gke-ops:
@@ -36,8 +36,7 @@ jobs:
               uses: google-github-actions/setup-gcloud@v2
 
             - name: Install GKE Auth Plugin
-              run: |
-                  gcloud components install gke-gcloud-auth-plugin
+              run: gcloud components install gke-gcloud-auth-plugin
 
             - name: Get GKE Credentials
               run: |
@@ -45,20 +44,62 @@ jobs:
                       --region ${{ env.REGION }} \
                       --project ${{ env.PROJECT_ID }}
 
-            # --- REGISTRY JOB ---
+            - name: Authenticate Docker to Artifact Registry
+              run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
+
+            # --- 1. CORE DEPLOYMENT (--deploy) ---
+            - name: Build & Deploy Core Services
+              if: contains(github.event.head_commit.message, '--deploy') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying core services..."
+                  export TAG=deploy-${{ github.sha }}
+
+                  # Run your existing scripts to build images and configure the Kustomize overlay
+                  ./scripts/configure_gke_overlay.sh scripts/gke.env
+                  ./scripts/build_and_push_gke_images.sh scripts/gke.env
+
+                  # Apply the new core services to the cluster
+                  kubectl apply -k k8s/overlays/gke
+                  echo "Deployment triggered successfully!"
+
+            # --- 2. TRAINING JOB (--train) ---
+            - name: Trigger Training Job (Fire-and-Forget)
+              if: contains(github.event.head_commit.message, '--train') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Starting training job..."
+                  export TAG=train-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-trainer:${TAG}"
+
+                  # Build and push just the trainer image
+                  docker buildx build --platform linux/amd64 -f services/trainer/Dockerfile -t $IMAGE --push .
+
+                  # Dynamically update the Kustomize file with the new image tag
+                  cd k8s/jobs/gke/trainer
+                  kustomize edit set image europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer=$IMAGE
+                  cd ../../../..
+
+                  # Clean up old job and submit the new one
+                  kubectl delete job trainer -n colorflow --ignore-not-found
+                  kubectl apply -k k8s/jobs/gke/trainer
+
+                  echo "Training job submitted to GKE! GitHub Action finishing to save minutes."
+
+            # --- 3. REGISTRY JOB (--register) ---
             - name: Trigger Registry Job
-              if: contains(github.event.head_commit.message, '[register]') || contains(github.event.head_commit.message, '[all]')
+              if: contains(github.event.head_commit.message, '--register') || contains(github.event.head_commit.message, '--all')
               run: |
                   echo "Starting registry promotion job..."
+                  export TAG=registry-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-registry:${TAG}"
 
-                  # 1. Clean up the old job so K8s allows us to trigger a new one
+                  # Build and push just the registry image
+                  docker buildx build --platform linux/amd64 -f services/registry/Dockerfile -t $IMAGE --push services/registry
+
+                  cd k8s/jobs/gke/registry
+                  kustomize edit set image europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry=$IMAGE
+                  cd ../../../..
+
                   kubectl delete job registry -n colorflow --ignore-not-found
-
-                  # 2. Apply the registry job configuration
                   kubectl apply -k k8s/jobs/gke/registry
-
-                  # 3. Wait for it to finish (max 5 minutes) so the action passes/fails correctly
                   kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m
-
-                  # 4. Print the logs so you can see what model was promoted right in GitHub!
                   kubectl logs job/registry -n colorflow
