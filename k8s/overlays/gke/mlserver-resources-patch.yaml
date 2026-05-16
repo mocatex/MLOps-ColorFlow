@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlserver
+  namespace: colorflow
+spec:
+  template:
+    spec:
+      containers:
+        - name: mlserver
+          resources:
+            requests:
+              cpu: 500m
+              ephemeral-storage: 4Gi
+              memory: 3Gi
+            limits:
+              cpu: 1
+              ephemeral-storage: 8Gi
+              memory: 6Gi

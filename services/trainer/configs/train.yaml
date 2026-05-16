@@ -1,0 +1,25 @@
+defaults:
+  - data: coco
+  - model: pix2pix
+  - training: default
+  - tracking: mlflow
+  - _self_
+
+seed: 42
+device: auto  # auto | cuda | cpu
+output_dir: ${oc.env:COLORFLOW_OUTPUT_DIR,../../storage/mlops-checkpoints}
+checkpoint_dir: ${oc.env:COLORFLOW_CHECKPOINT_DIR,../../storage/mlops-checkpoints}
+generator_checkpoint: res18-unet.pt
+gan_checkpoint: main-model.pt
+
+# Silence skimage's "negative Z values clipped" warnings from Lab→sRGB
+# conversion in sample-grid logging. These are gamut-mapping artifacts,
+# not numerical bugs. Set to false to surface them again.
+suppress_lab_warnings: true
+
+hydra:
+  run:
+    dir: ${output_dir}/runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${output_dir}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

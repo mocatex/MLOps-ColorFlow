@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>ColorFlow | ML Colorizer</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <div id="fullscreen-drop-overlay">
+            <div class="overlay-content">
+                <span class="drop-icon">📥</span>
+                <h2>Drop image anywhere to colorize</h2>
+            </div>
+        </div>
+
+        <main class="container">
+            <header>
+                <h1>ColorFlow</h1>
+                <p>GAN-powered image colorization</p>
+            </header>
+
+            <div class="drop-zone" id="upload-prompt">
+                <span class="drop-icon">📁</span>
+                <p>Drag & drop a grayscale image anywhere</p>
+                <p class="text-sm">or</p>
+                <label class="btn outline">
+                    Browse File
+                    <input type="file" id="file-input" accept="image/*" hidden />
+                </label>
+            </div>
+
+            <div id="workspace" class="workspace hidden">
+                <div class="preview-panel">
+                    <div class="image-card">
+                        <h3>Input</h3>
+                        <img id="input-preview" src="" alt="Input" />
+                        <p id="input-meta" class="meta hidden"></p>
+                    </div>
+                    <div class="image-card">
+                        <h3>Colorized</h3>
+                        <div id="loading-spinner" class="loading hidden">
+                            <div class="spinner"></div>
+                            <p>Processing via MLServer...</p>
+                        </div>
+                        <img id="output-preview" src="" alt="Output" class="hidden" />
+                        <p id="output-meta" class="meta hidden"></p>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <label style="margin-right: auto; display: flex; align-items: center; gap: 8px; color: var(--text-muted); cursor: pointer">
+                        <input type="checkbox" id="debug-color-toggle" />
+                        Debug: Show Pure GAN Colors
+                    </label>
+                    <button id="reset-btn" class="btn outline">Colorize Another</button>
+                    <button id="download-btn" class="btn primary" disabled>Download Result</button>
+                </div>
+            </div>
+        </main>
+
+        <script src="app.js"></script>
+
+        <!-- confetti -->
+        <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+        <!-- HEIC support -->
+        <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+    </body>
+</html>

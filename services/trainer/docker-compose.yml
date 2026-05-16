@@ -1,0 +1,37 @@
+# Local orchestration for the trainer image only.
+# MLflow is expected to run as an external service.
+#
+# Typical workflow:
+#   docker compose build training             # build the trainer image
+#   docker compose run --rm training           # one-shot training run
+#   docker compose run --rm tuning             # one-shot HPO run
+#
+# Training data is expected to exist locally at ../../storage/mlops-coco/images.
+
+services:
+  training:
+    build:
+      context: ../..
+      dockerfile: services/trainer/Dockerfile
+    image: mlops-colorflow-training:latest
+    environment:
+      COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
+      COLORFLOW_OUTPUT_DIR: /app/outputs
+      COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://localhost:5001}
+    volumes:
+      - ../../outputs:/app/outputs
+      - ../../storage:/app/storage
+
+  # Same image as `training`, just a different default command.
+  tuning:
+    image: mlops-colorflow-training:latest
+    command: ["tune.py", "--n-trials", "20"]
+    environment:
+      COLORFLOW_DATA_DIR: /app/storage/mlops-coco/images
+      COLORFLOW_OUTPUT_DIR: /app/outputs
+      COLORFLOW_CHECKPOINT_DIR: /app/storage/mlops-checkpoints
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://localhost:5001}
+    volumes:
+      - ../../outputs:/app/outputs
+      - ../../storage:/app/storage

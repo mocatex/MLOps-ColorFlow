@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-secrets
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: colorflow
+
+$patch: delete
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: colorflow
+  namespace: colorflow
+
+$patch: delete

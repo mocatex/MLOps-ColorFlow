@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlserver
+  namespace: colorflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlserver
+  template:
+    metadata:
+      labels:
+        app: mlserver
+    spec:
+      serviceAccountName: colorflow-runtime
+      containers:
+        - name: mlserver
+          image: colorflow-mlserver
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: colorflow-model
+            - name: MLFLOW_REGISTERED_MODEL_ALIAS
+              value: champion
+            - name: SERVED_MODEL_NAME
+              value: colorflow
+          volumeMounts:
+            - name: mlflow-artifacts
+              mountPath: /outputs/mlruns
+          ports:
+            - containerPort: 8080
+              name: http
+          startupProbe:
+            httpGet:
+              path: /v2/health/live
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /v2/health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v2/health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              cpu: 500m
+              memory: 2Gi
+      volumes:
+        - name: mlflow-artifacts
+          persistentVolumeClaim:
+            claimName: mlflow-artifacts

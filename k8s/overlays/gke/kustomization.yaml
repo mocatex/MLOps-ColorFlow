@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - mlflow-artifacts-pv.yaml
+  - checkpoints-pv.yaml
+images:
+  - name: colorflow-mlflow
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-mlflow
+    newTag: mlflow-timeout-fix-20260516
+  - name: colorflow-registry
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry
+    newTag: mlflow-timeout-fix-20260516
+  - name: colorflow-trainer
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer
+    newTag: mlflow-timeout-fix-20260516
+  - name: colorflow-ui
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-ui
+    newTag: mlflow-timeout-fix-20260516
+  - name: colorflow-mlserver
+    newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-mlserver
+    newTag: mlflow-timeout-fix-20260516
+patches:
+  - path: namespace-labels-patch.yaml
+  - path: ingress-host-patch.yaml
+  - path: runtime-serviceaccount-patch.yaml
+  - path: mlflow-artifact-root-patch.yaml
+  - path: mlflow-artifacts-pvc-patch.yaml
+  - path: checkpoints-pvc-patch.yaml
+  - path: mlflow-gcsfuse-annotation-patch.yaml
+  - path: mlserver-gcsfuse-annotation-patch.yaml
+  - path: mlserver-resources-patch.yaml

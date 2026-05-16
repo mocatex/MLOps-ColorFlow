@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: trainer
+  namespace: colorflow
+spec:
+  template:
+    spec:
+      containers:
+        - name: trainer
+          args:
+            - train.py
+            - training.pretrain.enabled=false
+            - training.epochs=0
+            - data.batch_size=1
+            - data.external_data_size=2
+            - data.train_size=1
+            - data.image_size_1=64
+            - data.image_size_2=64
+          env:
+            - name: COLORFLOW_DATA_DIR
+              value: /app/storage/mlops-coco/images
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: colorflow-gke-v2

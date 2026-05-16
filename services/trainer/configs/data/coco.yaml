@@ -1,0 +1,9 @@
+source: local_directory
+path: ${oc.env:COLORFLOW_DATA_DIR,../../storage/mlops-coco/images} # populated by `dvc pull`; tracked via storage/mlops-coco/images.dvc
+external_data_size: null # number of images in the dataset. null means use all available images in the data directory. 
+train_size: null # images used for training, the rest is used for validation. null means a default 80/20 split.
+image_size_1: 256
+image_size_2: 256
+batch_size: 32
+num_workers: 0
+pin_memory: true

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-gcsfuse
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - implicit-dirs
+  claimRef:
+    namespace: colorflow
+    name: model-checkpoints
+  csi:
+    driver: gcsfuse.csi.storage.gke.io
+    volumeHandle: mlops-checkpoints

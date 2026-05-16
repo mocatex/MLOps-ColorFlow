@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: artifact-uploader
+  namespace: colorflow
+  annotations:
+    gke-gcsfuse/volumes: "true"
