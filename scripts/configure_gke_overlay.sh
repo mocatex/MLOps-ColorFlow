@@ -355,9 +355,9 @@ spec:
         - name: trainer
           env:
             - name: DVC_PULL_DATA
-              value: "false"
-            - name: GCS_DATA_URI
-              value:"gs://mlops-coco/images"
+              value: "true"
+            - name: DVC_PULL_TARGET
+              value: images.dvc
 EOF
 
 cat > k8s/jobs/gke/trainer/kustomization.yaml <<EOF
@@ -572,6 +572,7 @@ spec:
     metadata:
       annotations:
         gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/ephemeral-storage-limit: "1Gi"
 EOF
 
 cat > k8s/overlays/gke/mlserver-gcsfuse-annotation-patch.yaml <<'EOF'
