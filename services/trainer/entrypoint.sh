@@ -52,6 +52,7 @@ if [ "$DVC_PULL_DATA" = "true" ] && { [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DA
 
   git init > /dev/null 2>&1 # DVC requires a Git repository -> dummy repo
   dvc pull "$DVC_PULL_TARGET"
+  cd /app
 fi
 
 if [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
