@@ -26,11 +26,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const loadingSpinner = document.getElementById("loading-spinner");
 
     const downloadBtn = document.getElementById("download-btn");
+    const debugToggle = document.getElementById("debug-color-toggle");
     const resetBtn = document.getElementById("reset-btn");
 
     let currentBlobUrl = null;
     let originalFileName = "image";
     let dragCounter = 0;
+
+    let currentHighResFile = null;
+    let currentLowResBlob = null;
 
     // --- Global Drag & Drop Handlers ---
     document.body.addEventListener("dragenter", (e) => {
@@ -181,11 +185,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!response.ok) throw new Error("Backend inference failed.");
 
             const version = response.headers.get("X-Model-Version") || "unknown";
-            const rawLowResBlob = await response.blob();
+            currentLowResBlob = await response.blob();
+            currentHighResFile = highResFile;
 
             // Run the trick!
             loadingSpinner.querySelector("p").textContent = "Enhancing resolution...";
-            const highResBlob = await enhanceResolution(highResFile, rawLowResBlob);
+            const highResBlob = await enhanceResolution(currentHighResFile, currentLowResBlob);
 
             currentBlobUrl = URL.createObjectURL(highResBlob);
 
@@ -264,23 +269,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 const outImageData = outCtx.createImageData(w, h);
                 const outPixels = outImageData.data;
 
+                const isDebugMode = document.getElementById("debug-color-toggle").checked;
+
                 for (let i = 0; i < outPixels.length; i += 4) {
                     // Luminance from high-res original (ITU-R BT.709)
-                    const L = 0.2126 * origData[i] + 0.7152 * origData[i + 1] + 0.0722 * origData[i + 2];
+                    let L;
 
-                    // Color from low-res image
+                    if (isDebugMode) {
+                        // For debug mode, force flat 50% gray to isolate pure chrominance
+                        L = 128;
+                    } else {
+                        // Normal mode: extract sharp luminance from the original image
+                        L = 0.2126 * origData[i] + 0.7152 * origData[i + 1] + 0.0722 * origData[i + 2];
+                    }
+
+                    // Color from the low-res GAN output
                     const Rc = colorData[i];
                     const Gc = colorData[i + 1];
                     const Bc = colorData[i + 2];
 
-                    // Convert color to HSL, replace its Lightness with the sharp luminance
+                    // Convert GAN color to HSL, replace its Lightness with our chosen L
                     const [h, s, _] = rgbToHsl(Rc, Gc, Bc);
                     const [r, g, b] = hslToRgb(h, s, L / 255);
 
                     outPixels[i] = r;
                     outPixels[i + 1] = g;
                     outPixels[i + 2] = b;
-                    outPixels[i + 3] = 255;
+                    outPixels[i + 3] = 255; // Alpha
                 }
 
                 outCtx.putImageData(outImageData, 0, 0);
@@ -359,6 +374,27 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     resetBtn.addEventListener("click", resetUI);
+
+    debugToggle.addEventListener("change", async () => {
+        if (!currentHighResFile || !currentLowResBlob) return;
+
+        loadingSpinner.querySelector("p").textContent = "Recalculating canvas...";
+        loadingSpinner.classList.remove("hidden");
+        outputPreview.classList.add("hidden");
+
+        try {
+            const highResBlob = await enhanceResolution(currentHighResFile, currentLowResBlob);
+
+            if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = URL.createObjectURL(highResBlob);
+            outputPreview.src = currentBlobUrl;
+        } catch (error) {
+            console.error(error);
+        } finally {
+            loadingSpinner.classList.add("hidden");
+            outputPreview.classList.remove("hidden");
+        }
+    });
 
     function resetUI() {
         workspace.classList.add("hidden");
