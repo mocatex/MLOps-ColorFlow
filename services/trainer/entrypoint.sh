@@ -49,7 +49,11 @@ fi
 if [ "$DVC_PULL_DATA" = "true" ] && { [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; }; then
   echo "[entrypoint] data missing at $DATA_DIR, pulling $DVC_PULL_TARGET via DVC from $DVC_ROOT" >&2
   cd "$DVC_ROOT"
+
+  git init > /dev/null 2>&1 # DVC requires a Git repository -> dummy repo
+  dvc config cache.type symlink # save space
   dvc pull "$DVC_PULL_TARGET"
+  cd /app
 fi
 
 if [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then

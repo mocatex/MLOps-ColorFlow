@@ -148,7 +148,10 @@ class ChampionModelServer:
                 self.load_error = str(e)
                 logger.warning(f"Poller check skipped: {e}")
             finally:
-                if target_version is not None and self.loading_version == target_version:
+                if (
+                    target_version is not None
+                    and self.loading_version == target_version
+                ):
                     self.loading_version = None
 
             await asyncio.sleep(interval_seconds)
@@ -221,7 +224,7 @@ app.add_middleware(
 
 @app.get("/v2/health/live")
 def live() -> dict[str, str]:
-    return {"status": "live"}
+    return {"status": "live", "message": "hello from the new mlserver action!"}
 
 
 @app.get("/v2/health/ready")

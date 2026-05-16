@@ -1,0 +1,149 @@
+name: ColorFlow Operations
+
+on:
+    push:
+        branches:
+            - main
+
+env:
+    PROJECT_ID: mlops-colorflow
+    REGION: europe-west6
+    CLUSTER_NAME: colorflow
+    WORKLOAD_IDENTITY_PROVIDER: "projects/260943884277/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+    SERVICE_ACCOUNT: "github-actions-sa@mlops-colorflow.iam.gserviceaccount.com"
+    REGISTRY_HOST: europe-west6-docker.pkg.dev
+
+jobs:
+    gke-ops:
+        name: GKE Operations
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: read
+            id-token: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Authenticate to Google Cloud
+              uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+                  service_account: ${{ env.SERVICE_ACCOUNT }}
+
+            - name: Set up Cloud SDK
+              uses: google-github-actions/setup-gcloud@v2
+
+            - name: Install GKE Auth Plugin
+              run: gcloud components install gke-gcloud-auth-plugin
+
+            - name: Get GKE Credentials
+              run: |
+                  gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
+                      --region ${{ env.REGION }} \
+                      --project ${{ env.PROJECT_ID }}
+
+            - name: Authenticate Docker to Artifact Registry
+              run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            # --- 1. CORE DEPLOYMENT (--deploy) ---
+            - name: Build & Deploy Core Services
+              if: contains(github.event.head_commit.message, '--deploy') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying core services..."
+                  export TAG=deploy-${{ github.sha }}
+
+                  # Run your existing scripts to build images and configure the Kustomize overlay
+                  ./scripts/configure_gke_overlay.sh scripts/gke.env
+                  ./scripts/build_and_push_gke_images.sh scripts/gke.env
+
+                  # Apply the new core services to the cluster
+                  kubectl apply -k k8s/overlays/gke
+                  echo "Deployment triggered successfully!"
+
+            # --- 2. TRAINING JOB (--train) ---
+            - name: Trigger Training Job (Fire-and-Forget)
+              if: contains(github.event.head_commit.message, '--train') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Starting training job..."
+                  export TAG=train-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-trainer:${TAG}"
+
+                  # Build and push just the trainer image
+                  docker buildx build --platform linux/amd64 -f services/trainer/Dockerfile --cache-from type=gha --cache-to type=gha,mode=max -t $IMAGE --push .
+
+                  # Dynamically update the Kustomize file with the new image tag
+                  cd k8s/jobs/gke/trainer
+                  kustomize edit set image europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer=$IMAGE
+                  cd ../../../..
+
+                  # Clean up old job and submit the new one
+                  kubectl delete job trainer -n colorflow --ignore-not-found
+                  kubectl apply -k k8s/jobs/gke/trainer
+
+                  echo "Training job submitted to GKE! GitHub Action finishing to save minutes."
+
+            # --- 3. REGISTRY JOB (--register) ---
+            - name: Trigger Registry Job
+              if: contains(github.event.head_commit.message, '--register') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Starting registry promotion job..."
+                  export TAG=registry-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-registry:${TAG}"
+
+                  # Build and push just the registry image
+                  docker buildx build --platform linux/amd64 -f services/registry/Dockerfile \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/registry
+
+                  cd k8s/jobs/gke/registry
+                  kustomize edit set image europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry=$IMAGE
+                  cd ../../../..
+
+                  kubectl delete job registry -n colorflow --ignore-not-found
+                  kubectl apply -k k8s/jobs/gke/registry
+                  kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m
+                  kubectl logs job/registry -n colorflow
+
+            # --- 4. UI DEPLOYMENT (--ui) ---
+            - name: Deploy UI
+              if: contains(github.event.head_commit.message, '--ui') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying UI..."
+                  export TAG=ui-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-ui:${TAG}"
+
+                  # Build with GitHub Actions caching for blazing fast rebuilds
+                  docker buildx build --platform linux/amd64 -f services/ui/Dockerfile \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/ui
+
+                  # Instantly roll out the new image to the live deployment
+                  kubectl set image deployment/ui ui=$IMAGE -n colorflow
+                  kubectl rollout status deployment/ui -n colorflow
+                  echo "UI updated successfully!"
+
+            # --- 5. MLSERVER DEPLOYMENT (--mlserver) ---
+            - name: Deploy MLServer
+              if: contains(github.event.head_commit.message, '--mlserver') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying MLServer..."
+                  export TAG=mlserver-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-mlserver:${TAG}"
+
+                  # Dynamically grab the exact MLflow base image currently running in your cluster!
+                  export BASE_IMAGE=$(kubectl get deployment mlflow -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}')
+                  echo "Using BASE_IMAGE: $BASE_IMAGE"
+
+                  docker buildx build --platform linux/amd64 -f services/mlserver/Dockerfile \
+                      --build-arg BASE_IMAGE=$BASE_IMAGE \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/mlserver
+
+                  kubectl set image deployment/mlserver mlserver=$IMAGE -n colorflow
+                  kubectl rollout status deployment/mlserver -n colorflow
+                  echo "MLServer updated successfully!"
