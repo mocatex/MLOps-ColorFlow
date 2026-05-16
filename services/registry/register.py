@@ -103,25 +103,38 @@ def get_best_existing_model_version(
     return best_version, best_metric
 
 
+def iter_finished_runs(client: MlflowClient, experiment_id: str):
+    page_token = None
+
+    while True:
+        runs = client.search_runs(
+            experiment_ids=[experiment_id],
+            filter_string="attributes.status = 'FINISHED'",
+            order_by=["attributes.start_time DESC"],
+            max_results=1000,
+            page_token=page_token,
+        )
+
+        for run in runs:
+            yield run
+
+        page_token = runs.token
+        if not page_token:
+            break
+
+
 def select_best_run(
     client: MlflowClient,
     experiment_id: str,
     metric_name: str,
     artifact_path: str,
 ):
-    runs = client.search_runs(
-        experiment_ids=[experiment_id],
-        filter_string="attributes.status = 'FINISHED'",
-        order_by=["attributes.start_time DESC"],
-        max_results=50,
-    )
-
     best_run = None
     best_key = None
     best_metric_name = None
     best_metric_value = None
 
-    for run in runs:
+    for run in iter_finished_runs(client, experiment_id):
         if not run_has_artifact(client, run.info.run_id, artifact_path):
             continue
 
