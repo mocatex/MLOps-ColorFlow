@@ -22,10 +22,11 @@ Who uses what locally:
 Storage locations:
 
 1. `PostgreSQL`: MLflow metadata. Used by cluster MLflow.
-2. `/outputs`: shared persistent volume mounted to the `colorflow-filestore` filestore on GKE.
-3. `/outputs/mlruns`: MLflow model artifacts. The trainer sends artifact/model files to MLflow through the MLflow tracking API, and MLflow saves those files here. Registry and MLServer access them through MLflow.
-4. `/outputs/checkpoints`: raw training checkpoints. Written by trainer. Not read directly by MLServer.
-5. `gs://mlops-coco`: training dataset bucket. Read by trainer.
+2. `gs://mlops-flow`: Cloud Storage bucket mounted through GCS FUSE at `/outputs/mlruns` on GKE.
+3. `gs://mlops-checkpoints`: Cloud Storage bucket mounted through GCS FUSE at `/outputs/checkpoints` on GKE.
+4. `/outputs/mlruns`: mounted MLflow artifact path backed by `gs://mlops-flow`. MLflow writes artifact/model files here. Registry and MLServer access them through MLflow.
+5. `/outputs/checkpoints`: mounted checkpoint path backed by `gs://mlops-checkpoints`. Trainer writes raw checkpoints and other trainer-side run outputs here.
+6. `gs://mlops-coco`: training dataset bucket. Read by trainer.
 
 Who uses what on GKE:
 
@@ -38,7 +39,7 @@ Who uses what on GKE:
 ## If You Train Locally First And Then Promote To GKE
 
 1. Local training writes to `storage/mlops-flow` and `storage/mlops-checkpoints`.
-2. You copy those into GKE Filestore at `/outputs/mlruns` and `/outputs/checkpoints`.
+2. You copy those into the GKE bucket mounts at `/outputs/mlruns` and `/outputs/checkpoints`.
 3. You promote the local champion into the GKE MLflow registry.
 4. MLServer then loads the registered model from `/outputs/mlruns`.
 
@@ -80,37 +81,47 @@ gcloud container clusters create-auto colorflow --region europe-west6
 gcloud container clusters get-credentials colorflow --region europe-west6
 ```
 
-# Create Filestore Intance
+# Configure Bucket Mounts
 
 ```bash
-# enable the file API for GKE to use Filestore as a shared filesystem for MLflow and MLServer artifacts
-gcloud services enable file.googleapis.com \
+# enable the APIs used by the bucket-backed setup
+gcloud services enable storage.googleapis.com \
+  container.googleapis.com \
   --project mlops-colorflow
 
-# create a Filestore instance with a 1TiB shared volume
-# this is where MLflow and MLServer will read and write artifacts on GKE
-# the filestore should then show up under console.cloud.google.com/filestore/instances
-gcloud filestore instances create colorflow-filestore2 \
+# these two buckets are the source of truth on GKE
+gcloud storage buckets describe gs://mlops-flow --project mlops-colorflow
+gcloud storage buckets describe gs://mlops-checkpoints --project mlops-colorflow
+
+# for read-write GCS FUSE mounts with Workload Identity, keep uniform bucket-level access on
+gcloud storage buckets update gs://mlops-flow --uniform-bucket-level-access
+gcloud storage buckets update gs://mlops-checkpoints --uniform-bucket-level-access
+
+# create them first if they do not exist yet
+# gcloud storage buckets create gs://mlops-flow --location=europe-west6 --project mlops-colorflow
+# gcloud storage buckets create gs://mlops-checkpoints --location=europe-west6 --project mlops-colorflow
+
+# create-auto is an Autopilot cluster, where the GCS FUSE CSI driver is enabled by default.
+# verify it anyway:
+gcloud container clusters describe colorflow \
+  --region europe-west6 \
   --project mlops-colorflow \
-  --location europe-west6-b \
-  --tier BASIC_HDD \
-  --file-share name=colorflow,capacity=1TiB \
-  --network name=default 
-  # check your VPC network name (should be "default" if you haven't created any custom VPCs)
+  --format="value(addonsConfig.gcsFuseCsiDriverConfig.enabled)"
 
-# get the private IP with:
-gcloud filestore instances describe colorflow-filestore2 \
-  --project mlops-colorflow \
-  --location europe-west6-b \
-  --format="value(networks[0].ipAddresses[0])"
+# put these values into scripts/gke.env:
+MLFLOW_ARTIFACT_STORAGE_MODE=bucket
+MLFLOW_ARTIFACT_ROOT=/outputs/mlruns
+MLFLOW_ARTIFACT_BUCKET=mlops-flow
+COLORFLOW_CHECKPOINT_BUCKET=mlops-checkpoints
 
-# Then put that value into scripts/gke.env:
-MLFLOW_ARTIFACT_NFS_SERVER=10.x.x.x
-MLFLOW_ARTIFACT_NFS_PATH=/colorflow
-
-# remove the old claim and volume objects, if they exist
-kubectl delete pvc mlflow-artifacts -n colorflow
-kubectl delete pv mlflow-artifacts-filestore
+# grant the runtime service account read-write access to both mounted buckets
+GSA=260943884277-compute@developer.gserviceaccount.com
+gcloud storage buckets add-iam-policy-binding gs://mlops-flow \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectUser"
+gcloud storage buckets add-iam-policy-binding gs://mlops-checkpoints \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectUser"
 ```
 
 # Build and Deploy to GKE
@@ -136,11 +147,10 @@ REGION=europe-west6
 REPOSITORY=colorflow
 IMAGE_TAG=your-new-tag
 APP_HOST=
-MLFLOW_ARTIFACT_STORAGE_MODE=filesystem
+MLFLOW_ARTIFACT_STORAGE_MODE=bucket
 MLFLOW_ARTIFACT_ROOT=/outputs/mlruns
-MLFLOW_ARTIFACT_NFS_SERVER=<your-filestore-or-nfs-ip>
-MLFLOW_ARTIFACT_NFS_PATH=/colorflow
-MLFLOW_ARTIFACT_PVC_SIZE=10Gi
+MLFLOW_ARTIFACT_BUCKET=mlops-flow
+COLORFLOW_CHECKPOINT_BUCKET=mlops-checkpoints
 GCP_SERVICE_ACCOUNT_EMAIL=our-real-service-account@mlops-colorflow.iam.gserviceaccount.com
 
 # build and push all service images to Artifact Registry using the same values
@@ -148,7 +158,7 @@ unset TAG
 set -a # start exporting all variables to the environment
 . ./scripts/gke.env
 # use a fresh tag whenever you change the image; this avoids reusing cached `latest`
-export TAG=new-filestore-fix-20260513
+export TAG=new-cluster-deploy-20260516
 set +a # stop exporting all variables
 
 # configure all GKE overlay placeholders from that one file
@@ -156,6 +166,13 @@ set +a # stop exporting all variables
 # make sure docker daemon is running
 # then build and push the images referenced by the GKE overlay to Artifact Registry:
 ./scripts/build_and_push_gke_images.sh scripts/gke.env
+# important: the GKE MLflow server now proxies artifact uploads through
+# `--serve-artifacts --artifacts-destination=/outputs/mlruns`.
+# if your cluster Postgres already contains experiments created before this change,
+# those experiments keep their old `/outputs/...` artifact locations and remote
+# clients will fail to log artifacts to them. In that case either:
+# 1. start from a clean cluster MLflow metadata store, or
+# 2. use a fresh GKE experiment name for promotion / training.
 # start MLflow first:
 kubectl apply -k k8s/stages/gke/mlflow
 # in case it gets stuck, you can scale it down to 0 and back up to force it to restart:
@@ -169,21 +186,23 @@ docker compose up -d postgres mlflow
 # run local registration 
 uv run python services/registry/register.py
 
-# start a temporary uploader pod that mounts the shared artifact volume
+# start a temporary uploader pod that mounts both buckets through GCS FUSE
 kubectl apply -k k8s/tools/gke/uploader
 kubectl wait --for=condition=Ready pod/artifact-uploader -n colorflow --timeout=180s
-kubectl exec -n colorflow artifact-uploader -- mkdir -p /outputs/mlruns /outputs/checkpoints
-# copy your local MLflow artifact tree and checkpoints into the shared persistent volume
+# copy your local MLflow artifact tree and checkpoints into the mounted buckets
 kubectl cp storage/mlops-flow/. colorflow/artifact-uploader:/outputs/mlruns
 kubectl cp storage/mlops-checkpoints/. colorflow/artifact-uploader:/outputs/checkpoints
 
 # expose MLflow through port forwarding so you can inspect it locally:
 kubectl port-forward -n colorflow svc/mlflow 5002:5000
 # In another terminal, promote the local champion into the cluster MLflow registry
+# if `colorflow-gke` already exists on this cluster from an older MLflow deployment,
+# use a never-before-used experiment name here instead, for example `colorflow-gke-v2`.
 # It should say "set alias 'champion'"
 uv run python services/registry/promote_local_model.py \
   --source-tracking-uri "file://$PWD/storage/mlops-flow" \
   --target-tracking-uri http://localhost:5002 \
+  --target-experiment-name colorflow-gke-v2 \
   --artifact-root /outputs/mlruns \
   --checkpoint-root /outputs/checkpoints
 
@@ -208,7 +227,7 @@ kubectl get ingress -n colorflow -w # watch it
 
 # Promote a local champion to GKE
 
-If the current `champion` model was trained locally, copy its files into the shared persistent volume and promote it into the GKE MLflow registry like this:
+If the current `champion` model was trained locally, copy its files into the bucket mounts and promote it into the GKE MLflow registry like this:
 
 ```bash
 # run the local registry job to select the champion. This will save the champions metadata to `storage/mlops-flow`.
@@ -217,13 +236,11 @@ uv run python services/registry/register.py
 # in order to use kubectl, you need to have the cluster credentials set up locally with:
 gcloud container clusters get-credentials colorflow --region europe-west6
 
-# start a temporary uploader pod that mounts the shared artifact volume
+# start a temporary uploader pod that mounts both buckets through GCS FUSE
 kubectl apply -k k8s/tools/gke/uploader
 # wait for the uploader pod to be ready before copying files
 kubectl wait --for=condition=Ready pod/artifact-uploader -n colorflow --timeout=120s
-# make sure the target directories exist before copying files
-kubectl exec -n colorflow artifact-uploader -- mkdir -p /outputs/mlruns /outputs/checkpoints
-# copy the local model files into the shared persistent volume
+# copy the local model files into the mounted buckets
 kubectl cp storage/mlops-flow/. colorflow/artifact-uploader:/outputs/mlruns
 kubectl cp storage/mlops-checkpoints/. colorflow/artifact-uploader:/outputs/checkpoints
 
@@ -237,10 +254,14 @@ pod=mlserver-856cdf84df-mnjdw
 kubectl cp services/registry/promote_local_model.py \
   colorflow/${pod}:/tmp/promote_local_model.py
 
+# if `colorflow-gke` already exists on this cluster from an older MLflow deployment,
+# use a never-before-used experiment name in the next command instead,
+# for example `colorflow-gke-v2`.
 # then run it inside the pod:
 kubectl exec -n colorflow ${pod} -- python /tmp/promote_local_model.py \
   --source-tracking-uri file:///outputs/mlruns \
   --target-tracking-uri http://mlflow:5000 \
+  --target-experiment-name colorflow-gke \
   --artifact-root /outputs/mlruns \
   --checkpoint-root /outputs/checkpoints
 # this should output something like: 
@@ -258,6 +279,31 @@ kubectl get pods -n colorflow
 # all pods shuld have READY set to 1/1 and STATUS to Running.
 ```
 
+# Update MLflow to GKE
+
+```bash
+# in the project root
+
+set -a
+. ./scripts/gke.env
+export TAG=mlflow-timeout-fix-20260516
+set +a
+
+./scripts/configure_gke_overlay.sh scripts/gke.env
+
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+docker buildx build \
+  --platform linux/amd64 \
+  --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlflow:${TAG}" \
+  --push \
+  services/mlflow
+
+kubectl apply -k k8s/stages/gke/mlflow
+kubectl rollout status deployment/postgres -n colorflow
+kubectl rollout status deployment/mlflow -n colorflow
+```
+
 # Update MLServer to GKE
 
 ```bash
@@ -271,12 +317,7 @@ set +a
 
 # authenticate your local docker client to push to Artifact Registry
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-```
 
-
-For repo-native flow:
-
-```bash
 # this builds all images and pushes them to Artifact Registry, then updates the GKE deployment:
 ./scripts/build_and_push_gke_images.sh scripts/gke.env
 kubectl apply -k k8s/overlays/gke
@@ -295,6 +336,8 @@ kubectl set image deployment/mlserver \
   mlserver="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlserver:${TAG}" \
   -n colorflow
 
+# if you are using the same tag as before, you may need to restart the deployment to force it to pull the new image:
+kubectl rollout restart deployment/mlserver -n colorflow
 # this can take a few minutes and even be unavailable for a short time during the rollout:
 kubectl rollout status deployment/mlserver -n colorflow
 # check the new image is running:
@@ -307,10 +350,15 @@ kubectl logs -n colorflow <new-pod-name>
 ```bash
 # in the project root
 
+# if you dont know the tag (below), you can list the images in Artifact Registry with:
+kubectl get deployment ui -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get deployment mlserver -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get deployment mlflow -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+
 # set the environment variables for your GKE cluster and Artifact Registry
 set -a
 . ./scripts/gke.env
-export TAG=mlserver-app-fix-20260513
+export TAG=mlflow-timeout-fix-20260516 # make sure this tag matches the mlflow image tag you just pushed
 set +a
 
 # authenticate your local docker client to push to Artifact Registry
@@ -328,6 +376,8 @@ kubectl set image deployment/ui \
   ui="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-ui:${TAG}" \
   -n colorflow
 
+# restart the deployment to force it to pull the new image
+kubectl rollout restart deployment/ui -n colorflow
 # this can take a few minutes and even be unavailable for a short time during the rollout:
 kubectl rollout status deployment/ui -n colorflow
 # check the new image is running:
@@ -484,6 +534,14 @@ gcloud storage buckets add-iam-policy-binding gs://mlops-coco \
   --member="serviceAccount:${GSA}" \
   --role="roles/storage.objectViewer"
 
+gcloud storage buckets add-iam-policy-binding gs://mlops-flow \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectUser"
+
+gcloud storage buckets add-iam-policy-binding gs://mlops-checkpoints \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectUser"
+
 # restart the pods
 kubectl rollout restart deployment/mlflow deployment/mlserver -n colorflow
 kubectl rollout status deployment/mlflow -n colorflow
@@ -520,9 +578,10 @@ gcloud container clusters list --region europe-west6
 gcloud container clusters delete colorflow-cluster --region europe-west6 --project mlops-colorflow
 ```
 
-# Inspect Filestore
+# Inspect Buckets
 
 ```bash
-# list all filestore instances in the region to find the name of your filestore:
-gcloud filestore instances list --region europe-west6
+# list the buckets used by the mounted GCS FUSE volumes:
+gcloud storage ls gs://mlops-flow
+gcloud storage ls gs://mlops-checkpoints
 ```

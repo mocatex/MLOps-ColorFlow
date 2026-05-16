@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mlflow-artifacts
+  name: model-checkpoints
   namespace: colorflow
 spec:
   accessModes:
@@ -10,4 +10,4 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: ""
-  volumeName: mlflow-artifacts-gcsfuse
+  volumeName: model-checkpoints-gcsfuse

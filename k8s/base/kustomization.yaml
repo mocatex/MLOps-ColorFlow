@@ -9,6 +9,7 @@ resources:
   - postgres-deployment.yaml
   - postgres-service.yaml
   - mlflow-artifacts-pvc.yaml
+  - checkpoints-pvc.yaml
   - mlflow-deployment.yaml
   - mlflow-service.yaml
   - mlserver-deployment.yaml

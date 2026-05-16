@@ -17,7 +17,9 @@ spec:
         - sleep infinity
       volumeMounts:
         - name: mlflow-artifacts
-          mountPath: /outputs
+          mountPath: /outputs/mlruns
+        - name: model-checkpoints
+          mountPath: /outputs/checkpoints
       resources:
         requests:
           cpu: 50m
@@ -29,3 +31,6 @@ spec:
     - name: mlflow-artifacts
       persistentVolumeClaim:
         claimName: mlflow-artifacts
+    - name: model-checkpoints
+      persistentVolumeClaim:
+        claimName: model-checkpoints

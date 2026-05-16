@@ -29,7 +29,7 @@ spec:
               value: colorflow
           volumeMounts:
             - name: mlflow-artifacts
-              mountPath: /outputs
+              mountPath: /outputs/mlruns
           ports:
             - containerPort: 8080
               name: http

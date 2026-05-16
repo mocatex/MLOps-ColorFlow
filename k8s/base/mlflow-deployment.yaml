@@ -24,7 +24,9 @@ spec:
             - --host=0.0.0.0
             - --port=5000
             - --backend-store-uri=postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)
-            - --default-artifact-root=$(MLFLOW_ARTIFACT_ROOT)
+            - --serve-artifacts
+            - --artifacts-destination=$(MLFLOW_ARTIFACT_ROOT)
+            - --gunicorn-opts=--timeout=300
           ports:
             - containerPort: 5000
               name: http
@@ -48,7 +50,7 @@ spec:
               value: /outputs/mlruns
           volumeMounts:
             - name: mlflow-artifacts
-              mountPath: /outputs
+              mountPath: /outputs/mlruns
           readinessProbe:
             tcpSocket:
               port: http

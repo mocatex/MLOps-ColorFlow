@@ -24,57 +24,51 @@ IMAGE_TAG="${TAG:-${IMAGE_TAG:-latest}}"
 APP_HOST="${APP_HOST:-}"
 GCP_SERVICE_ACCOUNT_EMAIL="${GCP_SERVICE_ACCOUNT_EMAIL:?Set GCP_SERVICE_ACCOUNT_EMAIL to your Workload Identity service account email}"
 MLFLOW_ARTIFACT_STORAGE_MODE="${MLFLOW_ARTIFACT_STORAGE_MODE:-bucket}"
+MLFLOW_ARTIFACT_PVC_SIZE="${MLFLOW_ARTIFACT_PVC_SIZE:-10Gi}"
 
-artifact_resources=""
-artifact_overlay_patches=""
-mlflow_stage_artifact_delete=""
-mlserver_stage_artifact_delete=""
-ui_stage_artifact_delete=""
+artifact_resources=$(cat <<'EOF'
+  - mlflow-artifacts-pv.yaml
+  - checkpoints-pv.yaml
+EOF
+)
+
+artifact_overlay_patches=$(cat <<'EOF'
+  - path: mlflow-artifacts-pvc-patch.yaml
+  - path: checkpoints-pvc-patch.yaml
+EOF
+)
+
+bucket_overlay_patches=""
+trainer_gcsfuse_patch=""
+uploader_gcsfuse_patch=""
 
 case "$MLFLOW_ARTIFACT_STORAGE_MODE" in
   bucket)
-    if [ -n "${MLFLOW_ARTIFACT_ROOT:-}" ]; then
-      artifact_root="$MLFLOW_ARTIFACT_ROOT"
-    else
-      : "${MLFLOW_ARTIFACT_BUCKET:?Set MLFLOW_ARTIFACT_BUCKET or MLFLOW_ARTIFACT_ROOT}"
-      artifact_root="gs://${MLFLOW_ARTIFACT_BUCKET}/artifacts"
-    fi
+    : "${MLFLOW_ARTIFACT_BUCKET:?Set MLFLOW_ARTIFACT_BUCKET when MLFLOW_ARTIFACT_STORAGE_MODE=bucket}"
+    : "${COLORFLOW_CHECKPOINT_BUCKET:?Set COLORFLOW_CHECKPOINT_BUCKET when MLFLOW_ARTIFACT_STORAGE_MODE=bucket}"
+    artifact_root="${MLFLOW_ARTIFACT_ROOT:-/outputs/mlruns}"
 
-    artifact_overlay_patches=$(cat <<'EOF'
-  - path: mlflow-no-artifacts-volume-patch.yaml
-  - path: mlserver-no-artifacts-volume-patch.yaml
+    bucket_overlay_patches=$(cat <<'EOF'
+  - path: mlflow-gcsfuse-annotation-patch.yaml
+  - path: mlserver-gcsfuse-annotation-patch.yaml
 EOF
 )
 
-    mlflow_stage_artifact_delete=$(cat <<'EOF'
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mlflow-artifacts
-  namespace: colorflow
-
-$patch: delete
+    trainer_gcsfuse_patch=$(cat <<'EOF'
+  - path: gcsfuse-annotation-patch.yaml
 EOF
 )
 
-    mlserver_stage_artifact_delete="$mlflow_stage_artifact_delete"
-    ui_stage_artifact_delete="$mlflow_stage_artifact_delete"
+    uploader_gcsfuse_patch=$(cat <<'EOF'
+patches:
+  - path: gcsfuse-annotation-patch.yaml
+EOF
+)
     ;;
   filesystem)
     : "${MLFLOW_ARTIFACT_NFS_SERVER:?Set MLFLOW_ARTIFACT_NFS_SERVER when MLFLOW_ARTIFACT_STORAGE_MODE=filesystem}"
     MLFLOW_ARTIFACT_NFS_PATH="${MLFLOW_ARTIFACT_NFS_PATH:-/colorflow}"
-    MLFLOW_ARTIFACT_PVC_SIZE="${MLFLOW_ARTIFACT_PVC_SIZE:-10Gi}"
     artifact_root="${MLFLOW_ARTIFACT_ROOT:-/outputs/mlruns}"
-
-    artifact_resources=$(cat <<'EOF'
-  - mlflow-artifacts-pv.yaml
-EOF
-)
-
-    artifact_overlay_patches=$(cat <<'EOF'
-  - path: mlflow-artifacts-pvc-patch.yaml
-EOF
-)
     ;;
   *)
     echo "Unsupported MLFLOW_ARTIFACT_STORAGE_MODE: $MLFLOW_ARTIFACT_STORAGE_MODE" >&2
@@ -94,9 +88,7 @@ resources:
   - ../../base
 EOF
 
-if [ -n "$artifact_resources" ]; then
-  printf '%s\n' "$artifact_resources"
-fi
+printf '%s\n' "$artifact_resources"
 
 cat <<EOF
 images:
@@ -122,8 +114,10 @@ patches:
   - path: mlflow-artifact-root-patch.yaml
 EOF
 
-if [ -n "$artifact_overlay_patches" ]; then
-  printf '%s\n' "$artifact_overlay_patches"
+printf '%s\n' "$artifact_overlay_patches"
+
+if [ -n "$bucket_overlay_patches" ]; then
+  printf '%s\n' "$bucket_overlay_patches"
 fi
 
 cat <<'EOF'
@@ -131,7 +125,13 @@ cat <<'EOF'
 EOF
 } > k8s/overlays/gke/kustomization.yaml
 
-mkdir -p k8s/stages/gke/mlflow k8s/stages/gke/mlserver k8s/stages/gke/ui
+mkdir -p \
+  k8s/stages/gke/mlflow \
+  k8s/stages/gke/mlserver \
+  k8s/stages/gke/ui \
+  k8s/jobs/gke/trainer \
+  k8s/jobs/gke/registry \
+  k8s/tools/gke/uploader
 
 cat > k8s/stages/gke/mlflow/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -142,13 +142,7 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-{
-if [ -n "$mlflow_stage_artifact_delete" ]; then
-  printf '%s\n' "$mlflow_stage_artifact_delete"
-  printf '%s\n' '---'
-fi
-
-cat <<'EOF'
+cat > k8s/stages/gke/mlflow/exclude-resources-patch.yaml <<'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -189,7 +183,6 @@ metadata:
 
 $patch: delete
 EOF
-} > k8s/stages/gke/mlflow/exclude-resources-patch.yaml
 
 cat > k8s/stages/gke/mlserver/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -200,8 +193,7 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-{
-cat <<'EOF'
+cat > k8s/stages/gke/mlserver/exclude-resources-patch.yaml <<'EOF'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -217,14 +209,6 @@ metadata:
   namespace: colorflow
 
 $patch: delete
-EOF
-
-if [ -n "$mlserver_stage_artifact_delete" ]; then
-  printf '%s\n' "---"
-  printf '%s\n' "$mlserver_stage_artifact_delete"
-fi
-
-cat <<'EOF'
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -282,7 +266,6 @@ metadata:
 
 $patch: delete
 EOF
-} > k8s/stages/gke/mlserver/exclude-resources-patch.yaml
 
 cat > k8s/stages/gke/ui/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -293,8 +276,7 @@ patches:
   - path: exclude-resources-patch.yaml
 EOF
 
-{
-cat <<'EOF'
+cat > k8s/stages/gke/ui/exclude-resources-patch.yaml <<'EOF'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -310,14 +292,7 @@ metadata:
   namespace: colorflow
 
 $patch: delete
-EOF
-
-if [ -n "$ui_stage_artifact_delete" ]; then
-  printf '%s\n' "---"
-  printf '%s\n' "$ui_stage_artifact_delete"
-fi
-
-cat <<'EOF'
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -366,9 +341,6 @@ metadata:
 
 $patch: delete
 EOF
-} > k8s/stages/gke/ui/exclude-resources-patch.yaml
-
-mkdir -p k8s/jobs/gke/trainer k8s/jobs/gke/registry
 
 cat > k8s/jobs/gke/trainer/trainer-dvc-pull-patch.yaml <<EOF
 apiVersion: batch/v1
@@ -401,6 +373,10 @@ patches:
   - path: trainer-dvc-pull-patch.yaml
 EOF
 
+if [ -n "$trainer_gcsfuse_patch" ]; then
+  printf '%s\n' "$trainer_gcsfuse_patch" >> k8s/jobs/gke/trainer/kustomization.yaml
+fi
+
 cat > k8s/jobs/gke/registry/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -411,6 +387,17 @@ images:
     newName: ${image_prefix}/colorflow-registry
     newTag: ${IMAGE_TAG}
 EOF
+
+cat > k8s/tools/gke/uploader/kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - uploader-pod.yaml
+EOF
+
+if [ -n "$uploader_gcsfuse_patch" ]; then
+  printf '%s\n' "$uploader_gcsfuse_patch" >> k8s/tools/gke/uploader/kustomization.yaml
+fi
 
 if [ -n "$APP_HOST" ]; then
 cat > k8s/overlays/gke/ingress-host-patch.yaml <<EOF
@@ -497,7 +484,134 @@ spec:
               value: ${artifact_root}
 EOF
 
-if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" = "filesystem" ]; then
+if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" = "bucket" ]; then
+cat > k8s/overlays/gke/mlflow-artifacts-pv.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mlflow-artifacts-gcsfuse
+spec:
+  capacity:
+    storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - implicit-dirs
+  claimRef:
+    namespace: colorflow
+    name: mlflow-artifacts
+  csi:
+    driver: gcsfuse.csi.storage.gke.io
+    volumeHandle: ${MLFLOW_ARTIFACT_BUCKET}
+EOF
+
+cat > k8s/overlays/gke/checkpoints-pv.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-gcsfuse
+spec:
+  capacity:
+    storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - implicit-dirs
+  claimRef:
+    namespace: colorflow
+    name: model-checkpoints
+  csi:
+    driver: gcsfuse.csi.storage.gke.io
+    volumeHandle: ${COLORFLOW_CHECKPOINT_BUCKET}
+EOF
+
+cat > k8s/overlays/gke/mlflow-artifacts-pvc-patch.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: colorflow
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  storageClassName: ""
+  volumeName: mlflow-artifacts-gcsfuse
+EOF
+
+cat > k8s/overlays/gke/checkpoints-pvc-patch.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  storageClassName: ""
+  volumeName: model-checkpoints-gcsfuse
+EOF
+
+cat > k8s/overlays/gke/mlflow-gcsfuse-annotation-patch.yaml <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: colorflow
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+EOF
+
+cat > k8s/overlays/gke/mlserver-gcsfuse-annotation-patch.yaml <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlserver
+  namespace: colorflow
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+EOF
+
+cat > k8s/jobs/gke/trainer/gcsfuse-annotation-patch.yaml <<'EOF'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: trainer
+  namespace: colorflow
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+EOF
+
+cat > k8s/tools/gke/uploader/gcsfuse-annotation-patch.yaml <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: artifact-uploader
+  namespace: colorflow
+  annotations:
+    gke-gcsfuse/volumes: "true"
+EOF
+else
+  artifact_nfs_root="${MLFLOW_ARTIFACT_NFS_PATH%/}"
+
 cat > k8s/overlays/gke/mlflow-artifacts-pv.yaml <<EOF
 apiVersion: v1
 kind: PersistentVolume
@@ -509,11 +623,31 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
   mountOptions:
     - nfsvers=3
   nfs:
     server: ${MLFLOW_ARTIFACT_NFS_SERVER}
-    path: ${MLFLOW_ARTIFACT_NFS_PATH}
+    path: ${artifact_nfs_root}/mlruns
+EOF
+
+cat > k8s/overlays/gke/checkpoints-pv.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-checkpoints-filestore
+spec:
+  capacity:
+    storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=3
+  nfs:
+    server: ${MLFLOW_ARTIFACT_NFS_SERVER}
+    path: ${artifact_nfs_root}/checkpoints
 EOF
 
 cat > k8s/overlays/gke/mlflow-artifacts-pvc-patch.yaml <<EOF
@@ -531,11 +665,33 @@ spec:
   storageClassName: ""
   volumeName: mlflow-artifacts-filestore
 EOF
+
+cat > k8s/overlays/gke/checkpoints-pvc-patch.yaml <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints
+  namespace: colorflow
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: ${MLFLOW_ARTIFACT_PVC_SIZE}
+  storageClassName: ""
+  volumeName: model-checkpoints-filestore
+EOF
+
+rm -f \
+  k8s/overlays/gke/mlflow-gcsfuse-annotation-patch.yaml \
+  k8s/overlays/gke/mlserver-gcsfuse-annotation-patch.yaml \
+  k8s/jobs/gke/trainer/gcsfuse-annotation-patch.yaml \
+  k8s/tools/gke/uploader/gcsfuse-annotation-patch.yaml
 fi
 
-if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" != "filesystem" ]; then
-  rm -f k8s/overlays/gke/mlflow-artifacts-pv.yaml k8s/overlays/gke/mlflow-artifacts-pvc-patch.yaml
-fi
+rm -f \
+  k8s/overlays/gke/mlflow-no-artifacts-volume-patch.yaml \
+  k8s/overlays/gke/mlserver-no-artifacts-volume-patch.yaml
 
 cat > k8s/overlays/gke/runtime-serviceaccount-patch.yaml <<EOF
 apiVersion: v1
@@ -563,6 +719,12 @@ if [ "$MLFLOW_ARTIFACT_STORAGE_MODE" = "filesystem" ]; then
 cat <<EOF
   MLFLOW_ARTIFACT_NFS_SERVER=${MLFLOW_ARTIFACT_NFS_SERVER}
   MLFLOW_ARTIFACT_NFS_PATH=${MLFLOW_ARTIFACT_NFS_PATH}
+  MLFLOW_ARTIFACT_PVC_SIZE=${MLFLOW_ARTIFACT_PVC_SIZE}
+EOF
+else
+cat <<EOF
+  MLFLOW_ARTIFACT_BUCKET=${MLFLOW_ARTIFACT_BUCKET}
+  COLORFLOW_CHECKPOINT_BUCKET=${COLORFLOW_CHECKPOINT_BUCKET}
   MLFLOW_ARTIFACT_PVC_SIZE=${MLFLOW_ARTIFACT_PVC_SIZE}
 EOF
 fi

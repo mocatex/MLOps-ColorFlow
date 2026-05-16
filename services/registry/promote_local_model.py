@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -33,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         help="Model alias to promote.",
     )
     parser.add_argument(
+        "--target-experiment-name",
+        default=os.environ.get("MLFLOW_TARGET_EXPERIMENT_NAME", "colorflow-gke"),
+        help="Target MLflow experiment name for the promotion run.",
+    )
+    parser.add_argument(
         "--artifact-root",
         default="/outputs/mlruns",
         help="Kept for backward compatibility; no longer needed for upload-based promotion.",
@@ -52,11 +58,41 @@ def ensure_registered_model(client: MlflowClient, model_name: str) -> None:
         client.get_registered_model(model_name)
 
 
-def ensure_experiment(client: MlflowClient, experiment_name: str) -> str:
+def is_remote_tracking_uri(tracking_uri: str) -> bool:
+    return tracking_uri.startswith(("http://", "https://"))
+
+
+def is_non_proxied_local_artifact_location(artifact_location: str | None) -> bool:
+    if not artifact_location:
+        return False
+    return artifact_location.startswith("/") or artifact_location.startswith("file://")
+
+
+def ensure_experiment(
+    client: MlflowClient,
+    experiment_name: str,
+    tracking_uri: str,
+) -> str:
     experiment = client.get_experiment_by_name(experiment_name)
-    if experiment is not None:
-        return experiment.experiment_id
-    return client.create_experiment(experiment_name)
+    if experiment is None:
+        experiment_id = client.create_experiment(experiment_name)
+        experiment = client.get_experiment(experiment_id)
+        if experiment is None:
+            raise RuntimeError(
+                f"Target experiment '{experiment_name}' was created but could not be reloaded"
+            )
+
+    if is_remote_tracking_uri(tracking_uri) and is_non_proxied_local_artifact_location(
+        experiment.artifact_location
+    ):
+        raise RuntimeError(
+            f"Target experiment '{experiment_name}' uses non-proxied artifact location "
+            f"'{experiment.artifact_location}'. Redeploy the target MLflow server with "
+            "'--serve-artifacts --artifacts-destination ...' and use a fresh target "
+            "experiment name, or clear the old cluster MLflow metadata before retrying."
+        )
+
+    return experiment.experiment_id
 
 
 def remap_checkpoint_uri(checkpoint_uri: str | None, checkpoint_root: str) -> str | None:
@@ -191,7 +227,11 @@ def main() -> None:
         )
         model = mlflow.pytorch.load_model(source_model_uri, map_location="cpu")
 
-        target_experiment_id = ensure_experiment(target_client, source_experiment.name)
+        target_experiment_id = ensure_experiment(
+            target_client,
+            args.target_experiment_name,
+            args.target_tracking_uri,
+        )
         mlflow.set_tracking_uri(args.target_tracking_uri)
         with mlflow.start_run(
             experiment_id=target_experiment_id,
