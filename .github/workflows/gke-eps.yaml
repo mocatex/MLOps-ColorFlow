@@ -9,16 +9,15 @@ env:
     PROJECT_ID: mlops-colorflow
     REGION: europe-west6
     CLUSTER_NAME: colorflow
-    # Replace with your actual Project Number!
-    WORKLOAD_IDENTITY_PROVIDER: "projects/260943884277/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+    # Keep your specific Project Number here!
+    WORKLOAD_IDENTITY_PROVIDER: "projects/YOUR_PROJECT_NUMBER_HERE/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
     SERVICE_ACCOUNT: "github-actions-sa@mlops-colorflow.iam.gserviceaccount.com"
 
 jobs:
-    auth-and-validate:
-        name: Validate GKE Connection
+    gke-ops:
+        name: GKE Operations
         runs-on: ubuntu-latest
 
-        # REQUIRED for Workload Identity Federation
         permissions:
             contents: read
             id-token: write
@@ -28,7 +27,6 @@ jobs:
               uses: actions/checkout@v4
 
             - name: Authenticate to Google Cloud
-              id: auth
               uses: google-github-actions/auth@v2
               with:
                   workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
@@ -37,7 +35,7 @@ jobs:
             - name: Set up Cloud SDK
               uses: google-github-actions/setup-gcloud@v2
 
-            - name: Install gke-gcloud-auth-plugin
+            - name: Install GKE Auth Plugin
               run: |
                   gcloud components install gke-gcloud-auth-plugin
 
@@ -47,8 +45,20 @@ jobs:
                       --region ${{ env.REGION }} \
                       --project ${{ env.PROJECT_ID }}
 
-            - name: Proof of Life (Get Pods)
+            # --- REGISTRY JOB ---
+            - name: Trigger Registry Job
+              if: contains(github.event.head_commit.message, '[register]') || contains(github.event.head_commit.message, '[all]')
               run: |
-                  echo "Successfully connected to GKE cluster: ${{ env.CLUSTER_NAME }}"
-                  echo "Fetching current pods in the colorflow namespace..."
-                  kubectl get pods -n colorflow
+                  echo "Starting registry promotion job..."
+
+                  # 1. Clean up the old job so K8s allows us to trigger a new one
+                  kubectl delete job registry -n colorflow --ignore-not-found
+
+                  # 2. Apply the registry job configuration
+                  kubectl apply -k k8s/jobs/gke/registry
+
+                  # 3. Wait for it to finish (max 5 minutes) so the action passes/fails correctly
+                  kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m
+
+                  # 4. Print the logs so you can see what model was promoted right in GitHub!
+                  kubectl logs job/registry -n colorflow
