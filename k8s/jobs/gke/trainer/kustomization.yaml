@@ -5,7 +5,8 @@ resources:
 images:
   - name: colorflow-trainer
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-trainer
-    newTag: mlflow-timeout-fix-20260516
+    newTag: new-cluster-deploy-20260516
 patches:
   - path: trainer-dvc-pull-patch.yaml
+  - path: trainer-experiment-patch.yaml
   - path: gcsfuse-annotation-patch.yaml

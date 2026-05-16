@@ -1,0 +1,13 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: registry
+  namespace: colorflow
+spec:
+  template:
+    spec:
+      containers:
+        - name: registry
+          env:
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: colorflow-gke-v2

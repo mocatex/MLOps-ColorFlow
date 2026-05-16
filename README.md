@@ -60,6 +60,8 @@ source .venv/bin/activate
 # List all Jobs or Pods
 
 ```bash
+# to see the nodes in the cluster. nodes are the underlying compute resources that run your pods.
+kubectl get nodes -n colorflow 
 # to see the jobs:
 kubectl get jobs -n colorflow
 # to see the pods created by the jobs:
@@ -312,26 +314,26 @@ kubectl rollout status deployment/mlflow -n colorflow
 # set the environment variables for your GKE cluster and Artifact Registry
 set -a
 . ./scripts/gke.env
-export TAG=mlserver-app-fix-20260513
+export TAG=mlserver-app-fix-20260516
 set +a
 
 # authenticate your local docker client to push to Artifact Registry
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-# this builds all images and pushes them to Artifact Registry, then updates the GKE deployment:
-./scripts/build_and_push_gke_images.sh scripts/gke.env
-kubectl apply -k k8s/overlays/gke
-kubectl rollout status deployment/mlserver -n colorflow
-kubectl get pods -n colorflow -l app=mlserver
-
+# get the current mlserver image tag running on GKE (optional, but useful to know what you are replacing):
+kubectl get deployment mlserver -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 # use an existing base image TAG
+base_tag=mlserver-mps-fix-20260508
+
+# build and push the new MLServer image to Artifact Registry, using the same base image as before to speed up the build:
 docker buildx build \
   --platform linux/amd64 \
-  --build-arg BASE_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlflow:mlserver-mps-fix-20260508" \
+  --build-arg BASE_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlflow:${base_tag}" \
   --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlserver:${TAG}" \
   --push \
   services/mlserver
 
+# update the GKE deployment to use the new image:
 kubectl set image deployment/mlserver \
   mlserver="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/colorflow-mlserver:${TAG}" \
   -n colorflow
@@ -349,11 +351,6 @@ kubectl logs -n colorflow <new-pod-name>
 
 ```bash
 # in the project root
-
-# if you dont know the tag (below), you can list the images in Artifact Registry with:
-kubectl get deployment ui -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-kubectl get deployment mlserver -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-kubectl get deployment mlflow -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 
 # set the environment variables for your GKE cluster and Artifact Registry
 set -a
@@ -428,17 +425,20 @@ docker buildx build \
 # Start the trainer and registry jobs on GKE:
 
 ```bash
+# make sure you have the correct tag set in the kustomization.yaml files for both trainer and registry jobs.
+
 # run trainer first, wait for it to complete, then run registry:
 kubectl delete job trainer registry -n colorflow --ignore-not-found && \
 kubectl apply -k k8s/jobs/gke/trainer && \
 kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=24h && \
-kubectl logs job/trainer -n colorflow
+kubectl logs job/trainer -n colorflow 
 
 # then trigger the registry job to register the champion model after training completes:
 kubectl delete job registry -n colorflow --ignore-not-found && \
 kubectl apply -k k8s/jobs/gke/registry && \
 kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m && \
-kubectl logs job/registry -n colorflow
+kubectl logs job/registry -n colorflow 
+
 
 # watch the trainer job logs live while it's running:
 kubectl logs -f job/trainer -n colorflow
@@ -510,6 +510,20 @@ This will forward the cluster UI service to your local machine so you can access
 kubectl port-forward -n colorflow svc/ui 8080:80
 # then open `http://localhost:8080`
 # localhost:8080 is the cluster UI service, not your local mlserver.
+```
+
+# Get the current image tags running on GKE
+
+If you deploy via `overlays/gke/kustomization.yaml`, make sure every image listed there has that tag pushed. \
+If you deploy via `overlays/gke/kustomization.yaml`, only the trainer image needs that tag.
+
+```bash
+# if you dont know the tag (below), you can list the images in Artifact Registry with:
+kubectl get deployment mlflow -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get deployment mlserver -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get deployment ui -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get job trainer -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl get job registry -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 ```
 
 # General GKE Troubleshooting

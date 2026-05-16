@@ -5,4 +5,6 @@ resources:
 images:
   - name: colorflow-registry
     newName: europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry
-    newTag: mlflow-timeout-fix-20260516
+    newTag: new-cluster-deploy-20260516
+patches:
+  - path: registry-experiment-patch.yaml

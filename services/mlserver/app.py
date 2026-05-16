@@ -55,6 +55,7 @@ class ChampionModelServer:
         self.model: Any = None
         self.loaded_version: str | None = None
         self.load_error: str | None = None
+        self.loading_version: str | None = None
         self.device = torch.device(os.environ.get("MODEL_DEVICE", "cpu"))
         self.image_size = int(os.environ.get("MODEL_IMAGE_SIZE", "256"))
 
@@ -97,11 +98,19 @@ class ChampionModelServer:
         """Called once on startup to ensure a model is ready before taking traffic."""
         try:
             target_version = self.resolve_target_version()
+            self.loading_version = target_version
             self.model = self.load_model_for_version(target_version)
             self.loaded_version = target_version
+            self.load_error = None
             logger.info(f"Initial startup: Loaded champion model v{target_version}")
         except Exception as e:
+            self.load_error = str(e)
             logger.error(f"Failed initial model load: {e}")
+        finally:
+            self.loading_version = None
+
+    async def load_model_for_version_async(self, target_version: str) -> Any:
+        return await asyncio.to_thread(self.load_model_for_version, target_version)
 
     async def background_poller(self, interval_seconds: int = 10) -> None:
         """Silently polls MLflow in the background for new champion models."""
@@ -109,28 +118,38 @@ class ChampionModelServer:
             f"Started background poller (checking every {interval_seconds}s)..."
         )
         while True:
+            target_version: str | None = None
             try:
                 target_version = self.resolve_target_version()
 
                 # If MLflow has a new champion, start the hot-swap process
-                if target_version != self.loaded_version:
+                if (
+                    target_version != self.loaded_version
+                    and target_version != self.loading_version
+                ):
                     logger.info(
                         f"🔄 New champion detected (v{target_version}). Pre-loading in background..."
                     )
+                    self.loading_version = target_version
 
                     # 1. Download and load into memory (Takes time, but doesn't block users)
-                    new_model = self.load_model_for_version(target_version)
+                    new_model = await self.load_model_for_version_async(target_version)
 
                     # 2. Atomic swap (Instant, zero downtime)
                     self.model = new_model
                     self.loaded_version = target_version
+                    self.load_error = None
                     logger.info(
                         f"✅ Successfully hot-swapped to v{target_version}! Now serving new traffic."
                     )
 
             except Exception as e:
                 # Silently catch errors so the poller doesn't crash if MLflow blips
-                logger.debug(f"Poller check skipped: {e}")
+                self.load_error = str(e)
+                logger.warning(f"Poller check skipped: {e}")
+            finally:
+                if target_version is not None and self.loading_version == target_version:
+                    self.loading_version = None
 
             await asyncio.sleep(interval_seconds)
 
