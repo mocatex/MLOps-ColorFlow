@@ -1,0 +1,50 @@
+name: ColorFlow Operations
+
+on:
+    push:
+        branches:
+            - main
+
+env:
+    PROJECT_ID: mlops-colorflow
+    REGION: europe-west6
+    CLUSTER_NAME: colorflow
+    # Replace with your actual Project Number!
+    WORKLOAD_IDENTITY_PROVIDER: "projects/YOUR_PROJECT_NUMBER_HERE/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+    SERVICE_ACCOUNT: "github-actions-sa@mlops-colorflow.iam.gserviceaccount.com"
+
+jobs:
+    auth-and-validate:
+        name: Validate GKE Connection
+        runs-on: ubuntu-latest
+
+        # REQUIRED for Workload Identity Federation
+        permissions:
+            contents: read
+            id-token: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Authenticate to Google Cloud
+              id: auth
+              uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+                  service_account: ${{ env.SERVICE_ACCOUNT }}
+
+            - name: Set up Cloud SDK
+              uses: google-github-actions/setup-gcloud@v2
+
+            - name: Get GKE Credentials
+              run: |
+                  gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
+                      --region ${{ env.REGION }} \
+                      --project ${{ env.PROJECT_ID }}
+
+            - name: Proof of Life (Get Pods)
+              run: |
+                  echo "Successfully connected to GKE cluster: ${{ env.CLUSTER_NAME }}"
+                  echo "Fetching current pods in the colorflow namespace..."
+                  kubectl get pods -n colorflow
