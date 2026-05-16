@@ -11,7 +11,7 @@ spec:
           args:
             - train.py
             - training.pretrain.enabled=false
-            - training.epochs=1
+            - training.epochs=0
             - data.batch_size=1
             - data.external_data_size=2
             - data.train_size=1

@@ -160,7 +160,7 @@ unset TAG
 set -a # start exporting all variables to the environment
 . ./scripts/gke.env
 # use a fresh tag whenever you change the image; this avoids reusing cached `latest`
-export TAG=new-cluster-deploy-20260516
+export TAG=new-cluster-deploy-$(date '+%Y%m%d%H%M%S')
 set +a # stop exporting all variables
 
 # configure all GKE overlay placeholders from that one file
@@ -288,7 +288,7 @@ kubectl get pods -n colorflow
 
 set -a
 . ./scripts/gke.env
-export TAG=mlflow-timeout-fix-20260516
+export TAG=mlflow-timeout-fix-$(date '+%Y%m%d%H%M%S')
 set +a
 
 ./scripts/configure_gke_overlay.sh scripts/gke.env
@@ -314,7 +314,7 @@ kubectl rollout status deployment/mlflow -n colorflow
 # set the environment variables for your GKE cluster and Artifact Registry
 set -a
 . ./scripts/gke.env
-export TAG=mlserver-app-fix-20260516
+export TAG=mlserver-app-fix-$(date '+%Y%m%d%H%M%S')
 set +a
 
 # authenticate your local docker client to push to Artifact Registry
@@ -323,7 +323,7 @@ gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 # get the current mlserver image tag running on GKE (optional, but useful to know what you are replacing):
 kubectl get deployment mlserver -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 # use an existing base image TAG
-base_tag=mlserver-mps-fix-20260508
+base_tag=mlserver-mps-fix-$(date '+%Y%m%d%H%M%S')
 
 # build and push the new MLServer image to Artifact Registry, using the same base image as before to speed up the build:
 docker buildx build \
@@ -355,7 +355,7 @@ kubectl logs -n colorflow <new-pod-name>
 # set the environment variables for your GKE cluster and Artifact Registry
 set -a
 . ./scripts/gke.env
-export TAG=mlflow-timeout-fix-20260516 # make sure this tag matches the mlflow image tag you just pushed
+export TAG=mlflow-timeout-fix-$(date '+%Y%m%d%H%M%S') # make sure this tag matches the mlflow image tag you just pushed
 set +a
 
 # authenticate your local docker client to push to Artifact Registry
@@ -388,7 +388,7 @@ kubectl logs -n colorflow <new-pod-name>
 # in the project root
 set -a
 . ./scripts/gke.env
-export TAG=trainer-new-tag-20260513
+export TAG=trainer-new-tag-$(date '+%Y%m%d%H%M%S')
 set +a
 
 # Update `k8s/jobs/gke/trainer/kustomization.yaml` to set `newTag: ${TAG}` before running `kubectl apply -k k8s/jobs/gke/trainer`.
@@ -408,7 +408,7 @@ docker buildx build \
 # in the project root
 set -a
 . ./scripts/gke.env
-export TAG=registry-new-tag-20260513
+export TAG=registry-new-tag-$(date '+%Y%m%d%H%M%S')
 set +a
 
 # Update `k8s/jobs/gke/registry/kustomization.yaml` to set `newTag: ${TAG}` 
