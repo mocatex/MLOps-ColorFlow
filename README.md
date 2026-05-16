@@ -129,8 +129,15 @@ gcloud storage buckets add-iam-policy-binding gs://mlops-checkpoints \
 # Build and Deploy to GKE
 
 ```bash
+# install gcloud components
+gcloud components install gke-gcloud-auth-plugin
 # check if you have set the project 
 gcloud config get project
+gcloud container clusters list --region europe-west6 --project mlops-colorflow
+
+# get credentials for the GKE cluster (this writes kubeconfig and sets current-context)
+gcloud container clusters get-credentials colorflow --region europe-west6 --project mlops-colorflow
+
 # if not, set it to the correct one
 gcloud config set project mlops-colorflow
 
@@ -431,7 +438,7 @@ docker buildx build \
 kubectl delete job trainer registry -n colorflow --ignore-not-found && \
 kubectl apply -k k8s/jobs/gke/trainer && \
 kubectl wait --for=condition=complete job/trainer -n colorflow --timeout=24h && \
-kubectl logs job/trainer -n colorflow 
+kubectl logs job/trainer -n colorflow && \
 
 # then trigger the registry job to register the champion model after training completes:
 kubectl delete job registry -n colorflow --ignore-not-found && \
