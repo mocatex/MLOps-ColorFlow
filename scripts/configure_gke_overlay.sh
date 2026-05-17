@@ -572,6 +572,7 @@ spec:
     metadata:
       annotations:
         gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/ephemeral-storage-request: "1Gi"
         gke-gcsfuse/ephemeral-storage-limit: "1Gi"
 EOF
 
