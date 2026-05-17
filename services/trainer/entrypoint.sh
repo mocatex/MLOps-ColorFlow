@@ -51,6 +51,7 @@ if [ "$DVC_PULL_DATA" = "true" ] && { [ ! -d "$DATA_DIR" ] || [ -z "$(ls -A "$DA
   cd "$DVC_ROOT"
 
   git init > /dev/null 2>&1 # DVC requires a Git repository -> dummy repo
+  dvc config cache.type symlink # save space
   dvc pull "$DVC_PULL_TARGET"
   cd /app
 fi
