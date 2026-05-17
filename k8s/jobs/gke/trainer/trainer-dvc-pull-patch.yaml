@@ -10,6 +10,6 @@ spec:
         - name: trainer
           env:
             - name: DVC_PULL_DATA
-              value: "false"
-            - name: GCS_DATA_URI
-              value: "gs://mlops-coco/images"
+              value: "true"
+            - name: DVC_PULL_TARGET
+              value: "images.dvc"
