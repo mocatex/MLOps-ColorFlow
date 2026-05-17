@@ -106,3 +106,42 @@ jobs:
                   kubectl apply -k k8s/jobs/gke/registry
                   kubectl wait --for=condition=complete job/registry -n colorflow --timeout=5m
                   kubectl logs job/registry -n colorflow
+
+            # --- 4. UI DEPLOYMENT (--ui) ---
+            - name: Deploy UI
+              if: contains(github.event.head_commit.message, '--ui') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying UI..."
+                  export TAG=ui-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-ui:${TAG}"
+
+                  # Build with GitHub Actions caching for blazing fast rebuilds
+                  docker buildx build --platform linux/amd64 -f services/ui/Dockerfile \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/ui
+
+                  # Instantly roll out the new image to the live deployment
+                  kubectl set image deployment/ui ui=$IMAGE -n colorflow
+                  kubectl rollout status deployment/ui -n colorflow
+                  echo "UI updated successfully!"
+
+            # --- 5. MLSERVER DEPLOYMENT (--mlserver) ---
+            - name: Deploy MLServer
+              if: contains(github.event.head_commit.message, '--mlserver') || contains(github.event.head_commit.message, '--all')
+              run: |
+                  echo "Building and deploying MLServer..."
+                  export TAG=mlserver-${{ github.sha }}
+                  export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-mlserver:${TAG}"
+
+                  # Dynamically grab the exact MLflow base image currently running in your cluster!
+                  export BASE_IMAGE=$(kubectl get deployment mlflow -n colorflow -o=jsonpath='{.spec.template.spec.containers[0].image}')
+                  echo "Using BASE_IMAGE: $BASE_IMAGE"
+
+                  docker buildx build --platform linux/amd64 -f services/mlserver/Dockerfile \
+                      --build-arg BASE_IMAGE=$BASE_IMAGE \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/mlserver
+
+                  kubectl set image deployment/mlserver mlserver=$IMAGE -n colorflow
+                  kubectl rollout status deployment/mlserver -n colorflow
+                  echo "MLServer updated successfully!"
