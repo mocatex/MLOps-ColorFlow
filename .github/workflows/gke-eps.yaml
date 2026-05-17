@@ -96,7 +96,9 @@ jobs:
                   export IMAGE="${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/colorflow/colorflow-registry:${TAG}"
 
                   # Build and push just the registry image
-                  docker buildx build --platform linux/amd64 -f services/registry/Dockerfile -t $IMAGE --push services/registry
+                  docker buildx build --platform linux/amd64 -f services/registry/Dockerfile \
+                      --cache-from type=gha --cache-to type=gha,mode=max \
+                      -t $IMAGE --push services/registry
 
                   cd k8s/jobs/gke/registry
                   kustomize edit set image europe-west6-docker.pkg.dev/mlops-colorflow/colorflow/colorflow-registry=$IMAGE
