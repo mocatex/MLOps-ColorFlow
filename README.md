@@ -606,3 +606,13 @@ gcloud container clusters delete colorflow-cluster --region europe-west6 --proje
 gcloud storage ls gs://mlops-flow
 gcloud storage ls gs://mlops-checkpoints
 ```
+
+# Run Github Actions Locally
+
+```bash
+# to run a workflow with a specific step (e.g. registry job) on the main branch, use:
+gh workflow run gke-eps.yaml -f operation=register
+
+# to test a workflow from another branch than main, use:
+gh workflow run gke-eps.yaml -f operation=register --ref <branch-name>
+```

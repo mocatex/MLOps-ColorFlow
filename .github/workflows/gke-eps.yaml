@@ -4,6 +4,19 @@ on:
     push:
         branches:
             - main
+    workflow_dispatch:
+        inputs:
+            operation:
+                description: Which operation to run
+                required: true
+                type: choice
+                options:
+                    - deploy
+                    - train
+                    - register
+                    - ui
+                    - mlserver
+                    - all
 
 env:
     PROJECT_ID: mlops-colorflow
@@ -52,7 +65,9 @@ jobs:
 
             # --- 1. CORE DEPLOYMENT (--deploy) ---
             - name: Build & Deploy Core Services
-              if: contains(github.event.head_commit.message, '--deploy') || contains(github.event.head_commit.message, '--all')
+              if: >-
+                  (github.event_name == 'workflow_dispatch' && (inputs.operation == 'deploy' || inputs.operation == 'all')) ||
+                  (github.event_name == 'push' && (contains(github.event.head_commit.message, '--deploy') || contains(github.event.head_commit.message, '--all')))
               run: |
                   echo "Building and deploying core services..."
                   export TAG=deploy-${{ github.sha }}
@@ -67,7 +82,9 @@ jobs:
 
             # --- 2. TRAINING JOB (--train) ---
             - name: Trigger Training Job (Fire-and-Forget)
-              if: contains(github.event.head_commit.message, '--train') || contains(github.event.head_commit.message, '--all')
+              if: >-
+                  (github.event_name == 'workflow_dispatch' && (inputs.operation == 'train' || inputs.operation == 'all')) ||
+                  (github.event_name == 'push' && (contains(github.event.head_commit.message, '--train') || contains(github.event.head_commit.message, '--all')))
               run: |
                   echo "Starting training job..."
                   export TAG=train-${{ github.sha }}
@@ -89,7 +106,9 @@ jobs:
 
             # --- 3. REGISTRY JOB (--register) ---
             - name: Trigger Registry Job
-              if: contains(github.event.head_commit.message, '--register') || contains(github.event.head_commit.message, '--all')
+              if: >-
+                  (github.event_name == 'workflow_dispatch' && (inputs.operation == 'register' || inputs.operation == 'all')) ||
+                  (github.event_name == 'push' && (contains(github.event.head_commit.message, '--register') || contains(github.event.head_commit.message, '--all')))
               run: |
                   echo "Starting registry promotion job..."
                   export TAG=registry-${{ github.sha }}
@@ -111,7 +130,9 @@ jobs:
 
             # --- 4. UI DEPLOYMENT (--ui) ---
             - name: Deploy UI
-              if: contains(github.event.head_commit.message, '--ui') || contains(github.event.head_commit.message, '--all')
+              if: >-
+                  (github.event_name == 'workflow_dispatch' && (inputs.operation == 'ui' || inputs.operation == 'all')) ||
+                  (github.event_name == 'push' && (contains(github.event.head_commit.message, '--ui') || contains(github.event.head_commit.message, '--all')))
               run: |
                   echo "Building and deploying UI..."
                   export TAG=ui-${{ github.sha }}
@@ -129,7 +150,9 @@ jobs:
 
             # --- 5. MLSERVER DEPLOYMENT (--mlserver) ---
             - name: Deploy MLServer
-              if: contains(github.event.head_commit.message, '--mlserver') || contains(github.event.head_commit.message, '--all')
+              if: >-
+                  (github.event_name == 'workflow_dispatch' && (inputs.operation == 'mlserver' || inputs.operation == 'all')) ||
+                  (github.event_name == 'push' && (contains(github.event.head_commit.message, '--mlserver') || contains(github.event.head_commit.message, '--all')))
               run: |
                   echo "Building and deploying MLServer..."
                   export TAG=mlserver-${{ github.sha }}
